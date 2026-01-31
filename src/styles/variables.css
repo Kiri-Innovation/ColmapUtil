@@ -1,0 +1,185 @@
+/**
+ * ColmapUtil 设计常量（单一来源）
+ * 所有与样式相关的常量仅在此文件定义一次，其余 CSS/JSX 通过 var(--*) 或工具类引用。
+ * 修改主题/尺寸时只改本文件。
+ */
+
+:root {
+  /* ========== 背景 ========== */
+  --bg-void: #0a0a0a;
+  --bg-primary: #0f0f0f;
+  --bg-secondary: #161616;
+  --bg-tertiary: #1e1e1e;
+  --bg-hover: #262626;
+  --bg-hover-darker: #222222;
+  --bg-input: #1a1a1a;
+  --bg-elevated: #242424;
+  --bg-surface: #1e1e1e;   /* 与 design-system / 表单 hover 等兼容 */
+
+  /* ========== 文字 ========== */
+  --text-primary: #e8e8e8;
+  --text-secondary: #8a8a8a;
+  --text-muted: #5a5a5a;
+
+  /* ========== 边框 ========== */
+  --border-color: #2a2a2a;
+  --border-light: #3a3a3a;
+  --border-subtle: #222222;
+  --border-primary: #2a2a2a;   /* 与 design-system 兼容 */
+  --border-secondary: #3a3a3a;
+
+  /* ========== 强调色 ========== */
+  --accent: #b8b8b8;
+  --accent-hover: #d0d0d0;
+  --accent-dim: rgba(184, 184, 184, 0.12);
+  --accent-primary: #b8b8b8;   /* 与 design-system 兼容 */
+
+  /* ========== 语义色 ========== */
+  --success: #6b9b6b;
+  --warning: #b89b6b;
+  --error: #b86b6b;
+  --info: #6b8bb8;
+
+  /* ========== 3D 可视化 ========== */
+  --frustum-default: #ff0000;
+  --frustum-selected: #ffffff;
+  --point-triangulated: #00ff00;
+  --point-untriangulated: #ff0000;
+  --match-line: #ff00ff;
+
+  /* ========== 字体 ========== */
+  --font-sans: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+
+  /* ========== 间距 ========== */
+  --sp-0: 0;
+  --sp-px: 1px;
+  --sp-0\.5: 0.125rem;
+  --sp-1: 0.25rem;
+  --sp-1\.5: 0.375rem;
+  --sp-2: 0.5rem;
+  --sp-2\.5: 0.625rem;
+  --sp-3: 0.75rem;
+  --sp-3\.5: 0.875rem;
+  --sp-4: 1rem;
+  --sp-5: 1.25rem;
+  --sp-6: 1.5rem;
+  --sp-7: 1.75rem;
+  --sp-8: 2rem;
+  --sp-9: 2.25rem;
+  --sp-10: 2.5rem;
+  --sp-11: 2.75rem;
+  --sp-12: 3rem;
+  --sp-14: 3.5rem;
+  --sp-16: 4rem;
+  --sp-20: 5rem;
+  --sp-24: 6rem;
+  --sp-28: 7rem;
+  --sp-32: 8rem;
+  --sp-36: 9rem;
+  --sp-40: 10rem;
+  --sp-44: 11rem;
+  --sp-48: 12rem;
+  --sp-52: 13rem;
+  --sp-56: 14rem;
+  --sp-60: 15rem;
+  --sp-64: 16rem;
+  --sp-72: 18rem;
+  --sp-80: 20rem;
+  --sp-96: 24rem;
+
+  /* ========== 圆角 ========== */
+  --radius-none: 0;
+  --radius-sm: 0.125rem;
+  --radius: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-full: 9999px;
+
+  /* ========== 阴影 ========== */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(0, 0, 0, 0.4);
+
+  /* ========== 动效 ========== */
+  --transition-fast: 0.1s ease-out;
+  --transition-base: 0.15s ease-out;
+  --transition-slow: 0.25s ease-out;
+  --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ========== 组件尺寸 ========== */
+  --scrollbar-width: 12px;
+  --control-btn-size: 2.5rem;
+  --control-panel-gap: 0.5rem;
+  --toolbar-height: 34px;
+  --statusbar-height: 24px;
+  --sidebar-width: 320px;
+  --sidebar-min-width: 200px;
+  --sidebar-max-width: 600px;
+
+  /* ========== 滑块 ========== */
+  --slider-thumb-size: 12px;
+  --slider-track-height: 4px;
+  --slider-container-height: 20px;
+
+  /* ========== 层级 ========== */
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 500;
+  --z-modal: 1000;
+  --z-toast: 1500;
+  --z-tooltip: 2000;
+
+  /* ========== 加载动画 delay ========== */
+  --bounce-delay-0: 0ms;
+  --bounce-delay-1: 150ms;
+  --bounce-delay-2: 300ms;
+
+  /* ========== 弹窗/布局（样式用，逻辑仍可从 config 读）========== */
+  --modal-max-width-pct: 85;
+  --modal-max-height-pct: 85;
+  --modal-header-height: 40px;
+  --modal-footer-height: 50px;
+  --modal-padding: 32px;
+  --modal-min-width: 400px;
+  --modal-min-height: 300px;
+  --modal-chrome-height: calc(var(--modal-header-height) + var(--modal-footer-height) + var(--modal-padding));
+
+  /* ========== 透明度（点匹配等，动态可被组件覆盖）========== */
+  --match-line-opacity: 0.4;
+  --opacity-dimmed: 0.3;
+  --opacity-overlay: 0.5;
+
+  /* ========== 列表/画廊间距与尺寸（与逻辑常量一致）========== */
+  --gap-gallery: 8px;
+  --gap-list: 8px;
+  --gap-match-view: 16px;
+  --size-list-row-height: 72px;
+  --size-default-cell-height: 100px;
+  --size-control-button: 40px;
+  --size-panel-min-width: 220px;
+  --size-panel-content-width: 240px;
+  --icon-size-control: 1.5rem;
+  --icon-size-hover-card: 0.875rem;
+
+  /* ========== 根级表现（单一来源）========== */
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

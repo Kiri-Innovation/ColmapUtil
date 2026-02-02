@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from 'react';
-import { useAppContext, useSelection, useNavigation, useUI } from '../../AppContext';
+import { useAppContext, useSelection, useNavigation, useUI, useT } from '../../AppContext';
 import { useSetting, useSettings } from '../../utils/settings';
 import { settings } from '../../utils/settings';
 import { getTooltipProps } from '../../utils/tooltip';
@@ -125,6 +125,7 @@ function usePanelState() {
 function LayersPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const panelRef = useRef(null);
+  const t = useT();
 
   // State from settings
   const [axesDisplayMode, setAxesDisplayMode] = useSetting('ui', 'axesDisplayMode');
@@ -322,7 +323,7 @@ function LayersPanel() {
                   <Check className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
                 )}
               </div>
-              <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>World Grid</span>
+              <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{t('worldGrid')}</span>
             </div>
 
             {/* Axis */}
@@ -356,7 +357,7 @@ function LayersPanel() {
                   <Check className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
                 )}
               </div>
-              <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>Axis</span>
+              <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{t('axis')}</span>
             </div>
 
             {/* Cameras */}
@@ -406,7 +407,7 @@ function LayersPanel() {
                 <Check className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
               </div>
               <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
-                Background ({backgroundColor.trim().toLowerCase() === '#2d2d30' ? 'Gray' : backgroundColor.trim().toLowerCase() === '#000000' ? 'Black' : 'White'})
+                {t('background')} ({backgroundColor.trim().toLowerCase() === '#2d2d30' ? 'Gray' : backgroundColor.trim().toLowerCase() === '#000000' ? 'Black' : 'White'})
               </span>
             </div>
           </div>
@@ -420,6 +421,7 @@ function LayersPanel() {
 function PointCloudRow({ hasPointCloudData, onSecondaryMenuChange }) {
   const [showSecondaryMenu, setShowSecondaryMenu] = useState(false);
   const secondaryMenuRef = useRef(null);
+  const t = useT();
   
   const [showPointCloud, setShowPointCloud] = useSetting('pointCloud', 'showPointCloud');
   const [colorMode, setColorMode] = useSetting('pointCloud', 'colorMode');
@@ -541,7 +543,7 @@ function PointCloudRow({ hasPointCloudData, onSecondaryMenuChange }) {
             <Check className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
           )}
         </div>
-        <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>Point Cloud</span>
+        <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{t('pointCloud')}</span>
       </div>
       
       {/* Three-dot button - always visible */}
@@ -589,7 +591,7 @@ function PointCloudRow({ hasPointCloudData, onSecondaryMenuChange }) {
               <div className="cu-control-panel">
                 <div className="cu-control-panel-content">
                   <SliderRow
-                    label="点大小"
+                    label={t('pointSize')}
                     value={pointSize}
                     min={0.1}
                     max={40}
@@ -599,17 +601,17 @@ function PointCloudRow({ hasPointCloudData, onSecondaryMenuChange }) {
                   />
                   
                   <SelectRow
-                    label="颜色模式"
+                    label={t('colorMode')}
                     value={colorMode}
                     onChange={v => setColorMode(v)}
                     options={[
                       { value: 'rgb', label: 'RGB' },
-                      { value: 'error', label: '误差' },
-                      { value: 'trackLength', label: '轨迹长度' }
+                      { value: 'error', label: t('errorLabel') },
+                      { value: 'trackLength', label: t('trackLengthLabel') }
                     ]}
                     optionInfo={{
-                      error: '误差是指重投影误差（Reprojection Error），单位为像素。它表示3D点投影回图像时的位置偏差。误差越小（绿色）表示点越准确可靠，误差越大（红色）表示点可能不准确或存在噪声。使用此模式可以快速识别重建质量。',
-                      trackLength: '轨迹长度是指每个3D点被多少个图像观测到。轨迹长度越长，表示该点被更多视角观测，通常更可靠。颜色会根据轨迹长度进行映射，帮助识别点的可靠性。'
+                      error: t('errorModeDesc'),
+                      trackLength: t('trackLengthDesc')
                     }}
                   />
                   
@@ -676,6 +678,7 @@ function CamerasRow({
 }) {
   const [showSecondaryMenu, setShowSecondaryMenu] = useState(false);
   const secondaryMenuRef = useRef(null);
+  const t = useT();
   
   const [cameraScale, setCameraScale] = useSetting('camera', 'cameraScale');
   const [colorMode, setColorMode] = useSetting('camera', 'frustumColorMode');
@@ -873,7 +876,7 @@ function CamerasRow({
                 <div className="cu-control-panel">
                   <div className="cu-control-panel-content">
                     <SliderRow
-                      label="相机缩放"
+                      label={t('cameraScale')}
                       value={cameraScale}
                       min={0.1}
                       max={10}
@@ -883,13 +886,13 @@ function CamerasRow({
                     />
                     
                     <SelectRow
-                      label="颜色模式"
+                      label={t('colorMode')}
                       value={colorMode}
                       onChange={v => setColorMode(v)}
                       options={[
-                        { value: 'single', label: '单一' },
-                        { value: 'byCamera', label: '按相机' },
-                        { value: 'byRigFrame', label: '按帧' }
+                        { value: 'single', label: t('frustumColorSingle') },
+                        { value: 'byCamera', label: t('frustumColorByCamera') },
+                        { value: 'byRigFrame', label: t('frustumColorByRig') }
                       ]}
                     />
                   </div>
@@ -907,6 +910,7 @@ function CamerasRow({
 function TransformControls() {
   const { transform, setTransform: updateTransform, resetTransform, applyToData } = useAppContext();
   const [gizmoMode, setGizmoMode] = useSetting('ui', 'gizmoMode');
+  const t = useT();
   
   const eps = 1e-8;
   const hasTransform = !(
@@ -932,18 +936,18 @@ function TransformControls() {
   return (
     <div className="cu-control-panel-content">
       <SelectRow
-        label="变换工具 (T)"
+        label={t('transformTool')}
         value={gizmoMode}
         onChange={v => setGizmoMode(v)}
         options={[
-          { value: 'off', label: '关闭' },
-          { value: 'global', label: '全局' },
-          { value: 'local', label: '局部' }
+          { value: 'off', label: t('transformOff') },
+          { value: 'global', label: t('transformGlobal') },
+          { value: 'local', label: t('transformLocal') }
         ]}
       />
       
       <SliderRow
-        label="缩放"
+        label={t('scale')}
         value={transform.scale}
         min={0.01}
         max={10}
@@ -953,7 +957,7 @@ function TransformControls() {
       />
       
       <SliderRow
-        label="旋转 X"
+        label={t('rotateX')}
         value={angleToDeg(transform.rotationX)}
         min={-180}
         max={180}
@@ -963,7 +967,7 @@ function TransformControls() {
       />
       
       <SliderRow
-        label="旋转 Y"
+        label={t('rotateY')}
         value={angleToDeg(transform.rotationY)}
         min={-180}
         max={180}
@@ -973,7 +977,7 @@ function TransformControls() {
       />
       
       <SliderRow
-        label="旋转 Z"
+        label={t('rotateZ')}
         value={angleToDeg(transform.rotationZ)}
         min={-180}
         max={180}
@@ -983,7 +987,7 @@ function TransformControls() {
       />
       
       <SliderRow
-        label="平移 X"
+        label={t('translateX')}
         value={transform.translationX}
         min={-100}
         max={100}
@@ -993,7 +997,7 @@ function TransformControls() {
       />
       
       <SliderRow
-        label="平移 Y"
+        label={t('translateY')}
         value={transform.translationY}
         min={-100}
         max={100}
@@ -1003,7 +1007,7 @@ function TransformControls() {
       />
       
       <SliderRow
-        label="平移 Z"
+        label={t('translateZ')}
         value={transform.translationZ}
         min={-100}
         max={100}
@@ -1018,14 +1022,14 @@ function TransformControls() {
           className="cu-modal-action-btn"
           disabled={!hasTransform}
         >
-          重置
+          {t('reset')}
         </button>
         <button
           onClick={applyToData}
           className="cu-modal-action-btn"
           disabled={!hasTransform}
         >
-          应用变换
+          {t('applyTransform')}
         </button>
       </div>
     </div>
@@ -1035,6 +1039,7 @@ function TransformControls() {
 // Export controls
 function ExportControls() {
   const { colmapData, loadedFiles } = useAppContext();
+  const t = useT();
   const [exportFormat, setExportFormat] = useState('binary');
   
   const handleExportZip = useCallback(async () => {
@@ -1056,7 +1061,7 @@ function ExportControls() {
     <div className="cu-control-panel-content">
       {/* Format toggle tab */}
       <div className="flex flex-col gap-1.5" style={{ marginBottom: '12px' }}>
-        <label className="text-ds-secondary text-sm">重建数据格式</label>
+        <label className="text-ds-secondary text-sm">{t('rebuildFormat')}</label>
         <div style={{ display: 'flex', gap: '4px' }}>
           <button
             onClick={() => setExportFormat('binary')}
@@ -1072,7 +1077,7 @@ function ExportControls() {
               fontSize: '13px'
             }}
           >
-            二进制 (.bin)
+            {t('binaryFormat')}
           </button>
           <button
             onClick={() => setExportFormat('text')}
@@ -1088,7 +1093,7 @@ function ExportControls() {
               fontSize: '13px'
             }}
           >
-            文本 (.txt)
+            {t('textFormat')}
           </button>
         </div>
       </div>
@@ -1105,7 +1110,7 @@ function ExportControls() {
           border: '1px solid var(--border)'
         }}
       >
-        导出压缩包 (.zip)
+        {t('exportZip')}
       </button>
     </div>
   );
@@ -1117,6 +1122,7 @@ function ViewButton({ activePanel, setActivePanel }) {
   const [cameraFov, setCameraFov] = useSetting('camera', 'cameraFov');
   const [cameraMode, setCameraMode] = useSetting('camera', 'cameraMode');
   const { resetView, setView } = useUI();
+  const t = useT();
   
   const handleResetView = useCallback(() => {
     resetView();
@@ -1138,7 +1144,7 @@ function ViewButton({ activePanel, setActivePanel }) {
       <div className="cu-control-panel-content">
         {/* Camera Mode */}
         <SelectRow
-          label="相机模式"
+          label={t('cameraMode')}
           value={cameraMode}
           onChange={v => setCameraMode(v)}
           options={[
@@ -1149,7 +1155,7 @@ function ViewButton({ activePanel, setActivePanel }) {
 
         {/* Projection toggle */}
         <div className="flex flex-col gap-1.5" style={{ marginBottom: '12px' }}>
-          <label className="text-ds-secondary text-sm">投影</label>
+          <label className="text-ds-secondary text-sm">{t('projection')}</label>
           <div style={{ display: 'flex', gap: '4px' }}>
             <button
               onClick={() => setCameraProjection('perspective')}
@@ -1201,7 +1207,7 @@ function ViewButton({ activePanel, setActivePanel }) {
 
         {/* View direction buttons */}
         <div className="flex flex-col gap-1.5" style={{ marginBottom: '12px' }}>
-          <label className="text-ds-secondary text-sm">快捷移动</label>
+          <label className="text-ds-secondary text-sm">{t('quickMove')}</label>
           <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
             <button
               onClick={() => setView('x')}
@@ -1255,7 +1261,7 @@ function ViewButton({ activePanel, setActivePanel }) {
             border: '1px solid var(--border)'
           }}
         >
-          重置视图 (R)
+          {t('resetView')}
         </button>
       </div>
     </OverlayUIButton>

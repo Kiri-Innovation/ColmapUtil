@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef, memo, startTransition, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useAppContext, useSelection, useNavigation, useUI } from '../../AppContext';
+import { useAppContext, useSelection, useNavigation, useUI, useT } from '../../AppContext';
 import { useSetting } from '../../utils/settings';
 import { resolveImageFromLoaded, resolveImageFromLoadedAsync, loadedFilesUseZip } from '../../utils/imageFileUtils';
 import { Thumbnail, pauseThumbnailCache, resumeThumbnailCache } from './Thumbnail';
@@ -83,6 +83,7 @@ function chunkArray(array, chunkSize) {
 
 export function ImageGallery({ isResizing = false }) {
   const { colmapData, loadedFiles } = useAppContext();
+  const t = useT();
   const { openImageDetail, setShowMatchesInModal, setMatchedImageId } = useUI();
   const [matchesDisplayMode] = useSetting('ui', 'matchesDisplayMode');
   const [matchesColor] = useSetting('ui', 'matchesColor');
@@ -196,12 +197,12 @@ export function ImageGallery({ isResizing = false }) {
 
   const cameraOptions = useMemo(() => {
     if (!colmapData) return [];
-    const opts = [{ value: 'all', label: '所有相机' }];
+    const opts = [{ value: 'all', label: t('allCameras') }];
     for (const cam of cameras) {
-      opts.push({ value: cam.cameraId, label: `相机 ${cam.cameraId}` });
+      opts.push({ value: cam.cameraId, label: `${t('cameraLabel')} ${cam.cameraId}` });
     }
     return opts;
-  }, [cameras]);
+  }, [cameras, t]);
 
   const images = useMemo(() => {
     if (!colmapData) return [];
@@ -429,7 +430,7 @@ export function ImageGallery({ isResizing = false }) {
   if (!colmapData) {
     return (
       <div className="empty-state">
-        加载 COLMAP 数据以查看图像
+        {t('loadColmapToViewImages')}
       </div>
     );
   }
@@ -437,7 +438,7 @@ export function ImageGallery({ isResizing = false }) {
   if (images.length === 0) {
     return (
       <div className="empty-state">
-        未找到图像
+        {t('noImagesFound')}
       </div>
     );
   }
@@ -463,7 +464,7 @@ export function ImageGallery({ isResizing = false }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
           <SelectRow
-            label="相机"
+            label={t('cameraLabel')}
             value={cameraFilter}
             onChange={(val) => setCameraFilter(val === 'all' ? 'all' : val)}
             options={cameraOptions}

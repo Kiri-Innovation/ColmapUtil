@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { settings, DEFAULTS } from '../../utils/settings';
+import { useT } from '../../AppContext';
+import { LanguageTabSwitcher } from './LanguageTabSwitcher';
 
 /**
  * Settings Modal - 简单的设置弹窗
@@ -7,6 +9,7 @@ import { settings, DEFAULTS } from '../../utils/settings';
 export function SettingsModal({ isOpen, onClose }) {
   const modalRef = useRef(null);
   const [isResetting, setIsResetting] = useState(false);
+  const t = useT();
 
   // 点击外部关闭
   useEffect(() => {
@@ -42,7 +45,7 @@ export function SettingsModal({ isOpen, onClose }) {
 
   // 清除所有偏好设置
   const handleClearPreferences = () => {
-    if (!confirm('确定要清除所有偏好设置吗？这将重置所有本地存储的设置（如相机尺寸、点云大小等）到默认值。')) {
+    if (!confirm(t('clearPreferencesConfirm'))) {
       return;
     }
 
@@ -61,8 +64,8 @@ export function SettingsModal({ isOpen, onClose }) {
         window.location.reload();
       }, 100);
     } catch (error) {
-      console.error('清除偏好设置时出错:', error);
-      alert('清除偏好设置时出错，请刷新页面重试。');
+      console.error('Clear preferences error:', error);
+      alert(t('clearPreferencesError'));
       setIsResetting(false);
     }
   };
@@ -80,19 +83,23 @@ export function SettingsModal({ isOpen, onClose }) {
         }}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-ds-primary">设置</h2>
+          <h2 className="text-lg font-semibold text-ds-primary">{t('settings')}</h2>
           <button
             onClick={onClose}
             className="text-ds-secondary hover:text-ds-primary transition-colors"
-            title="关闭"
+            title={t('close')}
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
-        
-        <div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm text-ds-secondary">{t('language')}</span>
+            <LanguageTabSwitcher />
+          </div>
           <button
             onClick={handleClearPreferences}
             disabled={isResetting}
@@ -108,7 +115,7 @@ export function SettingsModal({ isOpen, onClose }) {
               opacity: isResetting ? 0.5 : 1
             }}
           >
-            {isResetting ? '正在重置...' : '清除偏好设置'}
+            {isResetting ? t('resetting') : t('clearPreferences')}
           </button>
         </div>
       </div>

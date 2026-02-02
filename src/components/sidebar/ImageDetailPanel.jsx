@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
-import { useAppContext, useUI } from '../../AppContext';
+import { useAppContext, useUI, useT } from '../../AppContext';
 import { useSetting } from '../../utils/settings';
 import { resolveImageFromLoaded, resolveImageFromLoadedAsync, resolveMaskFromLoadedAsync, loadedFilesUseZip } from '../../utils/imageFileUtils';
 import { GAP_MATCH_VIEW, RESIZE_DEBOUNCE_MS, OPACITY_MATCH_LINES } from '../../config';
@@ -96,6 +96,7 @@ function formatParam(value) {
 /** 可折叠的相机详情：每行一个 key-value；支持受控 expanded/onToggle 以便父组件根据展开状态预留不同高度 */
 function CollapsibleCameraDetail({ camera, image, imageDetailId, qvec, tvec, defaultExpanded = false, expanded: controlledExpanded, onToggle }) {
   const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
+  const t = useT();
   const isControlled = controlledExpanded !== undefined;
   const expanded = isControlled ? controlledExpanded : internalExpanded;
   const handleToggle = useCallback(() => {
@@ -111,13 +112,13 @@ function CollapsibleCameraDetail({ camera, image, imageDetailId, qvec, tvec, def
   const tStr = tvec.map((v) => v.toFixed(2)).join(', ');
 
   const rows = [
-    { key: '图像 ID', value: String(imageDetailId ?? image?.imageId ?? '') },
-    { key: '图像名称', value: image?.name ?? '' },
-    { key: '相机模型', value: modelName },
-    { key: '分辨率', value: `${camera.width} × ${camera.height}` },
-    { key: '内参', value: paramsStr },
-    { key: '旋转 R (qw,qx,qy,qz)', value: rStr },
-    { key: '平移 T', value: tStr },
+    { key: t('imageId'), value: String(imageDetailId ?? image?.imageId ?? '') },
+    { key: t('imageName'), value: image?.name ?? '' },
+    { key: t('cameraModel'), value: modelName },
+    { key: t('resolution'), value: `${camera.width} × ${camera.height}` },
+    { key: t('intrinsics'), value: paramsStr },
+    { key: t('rotationR'), value: rStr },
+    { key: t('translationT'), value: tStr },
   ];
 
   return (
@@ -132,7 +133,7 @@ function CollapsibleCameraDetail({ camera, image, imageDetailId, qvec, tvec, def
         ) : (
           <ChevronRight className="w-4 h-4" />
         )}
-        <span>相机详情</span>
+        <span>{t('cameraDetail')}</span>
       </button>
       {expanded && (
         <div className="camera-detail-body">
@@ -345,6 +346,7 @@ function ImagePlaceholder({ width, height, cameraWidth, cameraHeight, label }) {
 
 export function ImageDetailPanel() {
   const { colmapData, loadedFiles } = useAppContext();
+  const t = useT();
   const [zipImageCacheVersion, setZipImageCacheVersion] = useState(0);
   const [zipMaskFile, setZipMaskFile] = useState(null);
   const { imageDetailId, closeImageDetail, openImageDetail, showMatchesInModal, setShowMatchesInModal, matchedImageId, setMatchedImageId } = useUI();
@@ -736,21 +738,21 @@ export function ImageDetailPanel() {
             onClick={() => setViewMode(viewMode === 'points2d' ? null : 'points2d')}
             className={`detail-view-tab ${viewMode === 'points2d' ? 'detail-view-tab-active' : ''}`}
           >
-            2D 点{numPoints2D > 0 && <span className="detail-view-tab-count">({numPoints2D})</span>}
+            {t('points2D')}{numPoints2D > 0 && <span className="detail-view-tab-count">({numPoints2D})</span>}
           </button>
           <button
             type="button"
             onClick={() => setViewMode(viewMode === 'points3d' ? null : 'points3d')}
             className={`detail-view-tab ${viewMode === 'points3d' ? 'detail-view-tab-active' : ''}`}
           >
-            3D 点{numPoints3D > 0 && <span className="detail-view-tab-count">({numPoints3D})</span>}
+            {t('points3D')}{numPoints3D > 0 && <span className="detail-view-tab-count">({numPoints3D})</span>}
           </button>
           <button
             type="button"
             onClick={() => setViewMode('matches')}
             className="detail-view-tab detail-view-tab-active"
           >
-            点匹配{currentMatchCount > 0 && <span className="detail-view-tab-count">({currentMatchCount})</span>}
+            {t('pointMatches')}{currentMatchCount > 0 && <span className="detail-view-tab-count">({currentMatchCount})</span>}
           </button>
         </div>
 
@@ -834,7 +836,7 @@ export function ImageDetailPanel() {
                         height: sideBySideDimensions.image1Height,
                       }}
                     >
-                      <span className="text-ds-muted text-sm">请选择图片</span>
+                      <span className="text-ds-muted text-sm">{t('selectImage')}</span>
                     </div>
                   )}
                   {matchLines.length > 0 && hasMatched && sideBySideDimensions.image1Width > 0 && sideBySideDimensions.image2Width > 0 && (
@@ -867,17 +869,17 @@ export function ImageDetailPanel() {
                       onWheel={handleMatchedImageWheel}
                       className="detail-match-select w-full py-1.5 px-2 pr-[52px] text-xs bg-ds-input text-ds-primary border border-ds rounded focus:outline-none focus:border-ds-light"
                     >
-                      <option value="">选择关联图像...</option>
+                      <option value="">{t('selectRelatedImage')}</option>
                       {connectedImages.map(({ imageId, matchCount, name }) => (
                         <option key={imageId} value={imageId}>
-                          {name} ({matchCount} 匹配)
+                          {name} ({matchCount} {t('matches')})
                         </option>
                       ))}
                     </select>
                     <ChevronDown className="detail-match-select-chevron w-4 h-4 text-ds-muted pointer-events-none" aria-hidden />
                     <span
                       className="detail-match-select-scroll-hint"
-                      aria-label="滚轮切换图片"
+                      aria-label={t('scrollWheelSwitchImage')}
                       onMouseEnter={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         setMatchSelectScrollTooltip({
@@ -915,14 +917,14 @@ export function ImageDetailPanel() {
                 lineHeight: 1.4,
               }}
             >
-              滚轮切换图片
+              {t('scrollWheelSwitchImage')}
             </div>,
             document.body
           )}
 
           <div className="detail-pagination">
               <div className="detail-pagination-group">
-                <button type="button" onClick={goToPrev} disabled={!hasPrev}>← 上一张</button>
+                <button type="button" onClick={goToPrev} disabled={!hasPrev}>{t('prevImage')}</button>
                 <div className="detail-pagination-input-wrap">
                   <input
                     type="text"
@@ -943,7 +945,7 @@ export function ImageDetailPanel() {
                   />
                   <span className="detail-pagination-total">/ {imageIds.length}</span>
                 </div>
-                <button type="button" onClick={goToNext} disabled={!hasNext}>下一张 →</button>
+                <button type="button" onClick={goToNext} disabled={!hasNext}>{t('nextImage')}</button>
                 {/* 两图对比模式：底部翻页不显示滚轮图标（滚轮用于切换关联图，更符合直觉） */}
               </div>
             </div>
@@ -965,21 +967,21 @@ export function ImageDetailPanel() {
           onClick={() => setViewMode(viewMode === 'points2d' ? null : 'points2d')}
           className={`detail-view-tab ${viewMode === 'points2d' ? 'detail-view-tab-active' : ''}`}
         >
-          2D 点{numPoints2D > 0 && <span className="detail-view-tab-count">({numPoints2D})</span>}
+          {t('points2D')}{numPoints2D > 0 && <span className="detail-view-tab-count">({numPoints2D})</span>}
         </button>
         <button
           type="button"
           onClick={() => setViewMode(viewMode === 'points3d' ? null : 'points3d')}
           className={`detail-view-tab ${viewMode === 'points3d' ? 'detail-view-tab-active' : ''}`}
         >
-          3D 点{numPoints3D > 0 && <span className="detail-view-tab-count">({numPoints3D})</span>}
+          {t('points3D')}{numPoints3D > 0 && <span className="detail-view-tab-count">({numPoints3D})</span>}
         </button>
         <button
           type="button"
           onClick={() => setViewMode('matches')}
           className={`detail-view-tab ${viewMode === 'matches' ? 'detail-view-tab-active' : ''}`}
         >
-          点匹配{connectedImages.length > 0 && <span className="detail-view-tab-count">({connectedImages.reduce((s, c) => s + c.matchCount, 0)})</span>}
+          {t('pointMatches')}{connectedImages.length > 0 && <span className="detail-view-tab-count">({connectedImages.reduce((s, c) => s + c.matchCount, 0)})</span>}
         </button>
       </div>
 
@@ -989,13 +991,17 @@ export function ImageDetailPanel() {
           className="group/scroll relative flex-1 min-h-0 bg-ds-secondary rounded overflow-hidden"
           style={{ paddingBottom: cameraDetailReserveHeight }}
         >
-          {hasMask && maskSrc && (
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 px-2 py-1 bg-ds-void/70 text-ds-secondary text-xs rounded opacity-0 group-hover/scroll:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-              <span>
-                Click: <span className="text-ds-primary">{maskMode}</span> → {maskMode === 'hover' ? 'mask' : maskMode === 'mask' ? 'split' : maskMode === 'split' ? 'image' : 'hover'}
-              </span>
-            </div>
-          )}
+          {hasMask && maskSrc && (() => {
+            const nextMode = maskMode === 'hover' ? 'mask' : maskMode === 'mask' ? 'split' : maskMode === 'split' ? 'image' : 'hover';
+            const modeLabel = (m) => t(m === 'hover' ? 'maskModeHover' : m === 'mask' ? 'maskModeMask' : m === 'split' ? 'maskModeSplit' : 'maskModeImage');
+            return (
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 px-2 py-1 bg-ds-void/70 text-ds-secondary text-xs rounded opacity-0 group-hover/scroll:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                <span>
+                  {t('clickLabel')} <span className="text-ds-primary">{modeLabel(maskMode)}</span> → {modeLabel(nextMode)}
+                </span>
+              </div>
+            );
+          })()}
           <div
             className="group absolute inset-0"
             onClick={hasMask && maskSrc ? cycleMaskMode : undefined}
@@ -1047,7 +1053,7 @@ export function ImageDetailPanel() {
                   height={renderedImageHeight}
                   cameraWidth={camera.width}
                   cameraHeight={camera.height}
-                  label="No image loaded"
+                  label={t('noImageLoaded')}
                 />
               </div>
             ))}
@@ -1088,10 +1094,10 @@ export function ImageDetailPanel() {
               onChange={(e) => setMatchedImageId(e.target.value ? parseInt(e.target.value) : null)}
               onWheel={handleMatchedImageWheel}
             >
-              <option value="">选择关联图像...</option>
+              <option value="">{t('selectRelatedImage')}</option>
               {connectedImages.map(({ imageId, matchCount, name }) => (
                 <option key={imageId} value={imageId}>
-                  {name} ({matchCount} 匹配)
+                  {name} ({matchCount} {t('matches')})
                 </option>
               ))}
             </select>
@@ -1099,7 +1105,7 @@ export function ImageDetailPanel() {
         )}
         <div className="detail-pagination">
           <div className="detail-pagination-group">
-            <button type="button" onClick={goToPrev} disabled={!hasPrev}>← 上一张</button>
+            <button type="button" onClick={goToPrev} disabled={!hasPrev}>{t('prevImage')}</button>
             <div className="detail-pagination-input-wrap">
               <input
                 type="text"
@@ -1120,10 +1126,10 @@ export function ImageDetailPanel() {
               />
               <span className="detail-pagination-total">/ {imageIds.length}</span>
             </div>
-            <button type="button" onClick={goToNext} disabled={!hasNext}>下一张 →</button>
+            <button type="button" onClick={goToNext} disabled={!hasNext}>{t('nextImage')}</button>
             <span
               className="detail-pagination-scroll-hint"
-              aria-label="滚轮切换图片"
+              aria-label={t('scrollWheelSwitchImage')}
               onMouseEnter={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 setPaginationScrollTooltip({
@@ -1157,7 +1163,7 @@ export function ImageDetailPanel() {
                 lineHeight: 1.4,
               }}
             >
-              滚轮切换图片
+              {t('scrollWheelSwitchImage')}
             </div>,
             document.body
           )}

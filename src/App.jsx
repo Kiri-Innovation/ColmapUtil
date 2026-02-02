@@ -6,15 +6,13 @@ import { ColmapVisualizer } from './components/visualizer/ColmapVisualizer';
 import { ImageGallery } from './components/sidebar/ImageGallery';
 import { ImageDetailPanel } from './components/sidebar/ImageDetailPanel';
 import { ToastContainer } from './components/common/ToastContainer';
-import { AppProvider, useAppContext, useUI, useSelection } from './AppContext';
+import { AppProvider, useAppContext, useUI, useSelection, useT } from './AppContext';
+import { LanguageSwitcher } from './components/common/LanguageSwitcher';
 import { isMobile } from './utils/isMobile.js';
 import './App.css';
 import './styles/design-system.css';
 
-const OBSERVATIONS_INFO =
-  'Observations = total 2D observations (sum of track lengths). E.g. one point seen by 5 images + one by 3 = 8 observations. Distinct from "points" (3D point count).';
-
-const MIN_PANEL_WIDTH = 280;
+const MIN_PANEL_WIDTH = 200;
 const MAX_PANEL_WIDTH_PERCENT = 0.6;
 const DEFAULT_PANEL_WIDTH = 420;
 
@@ -71,19 +69,20 @@ function useResizablePanel(defaultWidth) {
 
 function Header() {
   const { colmapData, loading } = useAppContext();
+  const t = useT();
   return (
     <div className="app-toolbar">
       <div className="app-toolbar-left">
         <div className="app-toolbar-title">COLMAP Util</div>
         {colmapData && (
           <div className="cu-toolbar-info">
-            {colmapData.images.size} 图像 | {colmapData.cameras.size} 相机
+            {colmapData.images.size} {t('toolbarImages')} | {colmapData.cameras.size} {t('toolbarCameras')}
           </div>
         )}
       </div>
       <div className="app-toolbar-right">
         {loading && (
-          <div className="cu-toolbar-loading">加载中...</div>
+          <div className="cu-toolbar-loading">{t('loading')}</div>
         )}
       </div>
     </div>
@@ -92,6 +91,7 @@ function Header() {
 
 function Footer() {
   const { loading, colmapData, pointCount, imageCount, cameraCount } = useAppContext();
+  const t = useT();
   const pointCloudTotalObservations = colmapData?.pointCloudTotalObservations;
   const [showObservationsInfo, setShowObservationsInfo] = useState(false);
   const [observationsTooltipRect, setObservationsTooltipRect] = useState({ top: 0, left: 0 });
@@ -117,25 +117,26 @@ function Footer() {
         <div className="app-statusbar-left">
           {colmapData ? (
             <>
-              <span className="text-ds-primary">点 = {pointCount.toLocaleString()}</span>
-              <span className="text-ds-primary">图像 = {imageCount.toLocaleString()}</span>
-              <span className="text-ds-primary">相机 = {cameraCount.toLocaleString()}</span>
+              <span className="text-ds-primary">{t('points')} = {pointCount.toLocaleString()}</span>
+              <span className="text-ds-primary">{t('images')} = {imageCount.toLocaleString()}</span>
+              <span className="text-ds-primary">{t('cameras')} = {cameraCount.toLocaleString()}</span>
               {pointCloudTotalObservations != null && (
                 <span
                   className="text-ds-primary inline-flex items-center gap-1 cursor-help"
                   onMouseEnter={handleObservationsMouseEnter}
                   onMouseLeave={handleObservationsMouseLeave}
                 >
-                  观测 = {pointCloudTotalObservations.toLocaleString()}
+                  {t('observations')} = {pointCloudTotalObservations.toLocaleString()}
                   <Info className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} aria-hidden="true" />
                 </span>
               )}
             </>
           ) : (
-            <span>{loading ? '加载中...' : '拖放 COLMAP 文件夹以加载'}</span>
+            <span>{loading ? t('loading') : t('dropHint')}</span>
           )}
         </div>
         <div className="app-statusbar-right">
+          <LanguageSwitcher style={{ marginRight: 'var(--sp-md)' }} />
           <span>v{__APP_VERSION__}</span>
         </div>
       </div>
@@ -163,7 +164,7 @@ function Footer() {
               lineHeight: '1.4',
             }}
           >
-            {OBSERVATIONS_INFO}
+            {t('observationsInfo')}
           </div>,
           document.body
         )}
@@ -172,6 +173,7 @@ function Footer() {
 }
 
 function MobileMessage() {
+  const t = useT();
   return (
     <div style={{
       width: '100%',
@@ -185,9 +187,9 @@ function MobileMessage() {
       padding: '24px',
       textAlign: 'center'
     }}>
-      <h1 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px' }}>Desktop Only</h1>
+      <h1 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px' }}>{t('desktopOnly')}</h1>
       <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-        Drag and drop a COLMAP folder is difficult on mobile devices.
+        {t('desktopOnlyDesc')}
       </p>
     </div>
   );
@@ -200,6 +202,7 @@ function MainLayout() {
   });
   const { imageDetailId, closeImageDetail } = useUI();
   const { panelWidth, handleMouseDown, isResizing } = useResizablePanel(DEFAULT_PANEL_WIDTH);
+  const t = useT();
 
   const hideGallery = embedMode;
   const showDetailPanel = imageDetailId !== null;
@@ -263,14 +266,14 @@ function MainLayout() {
                       onClick={closeImageDetail}
                       style={{ cursor: 'pointer' }}
                     >
-                      ← 返回
+                      {t('back')}
                     </button>
                   ) : (
                     <button
                       className="sidebar-tab active"
                       style={{ cursor: 'default' }}
                     >
-                      图像画廊
+                      {t('imageGallery')}
                     </button>
                   )}
                 </div>

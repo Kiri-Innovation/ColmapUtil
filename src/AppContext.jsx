@@ -1,5 +1,5 @@
 /**
- * AppContext: colmapData, toast, transform, selection, navigation, UI. Exposes useAppContext, useSelection, useNavigation, useUI.
+ * AppContext: colmapData, toast, transform, selection, navigation, UI, locale. Exposes useAppContext, useSelection, useNavigation, useUI, useLocale, useT.
  */
 
 import {
@@ -11,6 +11,7 @@ import {
   useMemo,
   useEffect,
 } from 'react';
+import { getStoredLocale, setStoredLocale, translate } from './i18n.js';
 import {
   defaultEulerParams,
   sim3FromEuler,
@@ -50,6 +51,14 @@ function selectCameraCount(colmapData) {
 }
 
 export function AppProvider({ children }) {
+  // --- Locale (i18n, default English) ---
+  const [locale, setLocaleState] = useState(() => getStoredLocale());
+  const setLocale = useCallback((next) => {
+    const value = next === 'zh' || next === 'en' ? next : getStoredLocale();
+    setStoredLocale(value);
+    setLocaleState(value);
+  }, []);
+
   // --- ColmapData ---
   const [colmapData, setColmapDataState] = useState(null);
   const [loadedFiles, setLoadedFiles] = useState(null);
@@ -245,6 +254,9 @@ export function AppProvider({ children }) {
 
   const value = useMemo(
     () => ({
+      // locale
+      locale,
+      setLocale,
       // colmapData
       colmapData,
       loadedFiles,
@@ -313,6 +325,8 @@ export function AppProvider({ children }) {
       setShowContextMenuEditor,
     }),
     [
+      locale,
+      setLocale,
       colmapData,
       loadedFiles,
       droppedFiles,
@@ -438,6 +452,18 @@ export function useUI() {
     showContextMenuEditor: ctx.showContextMenuEditor,
     setShowContextMenuEditor: ctx.setShowContextMenuEditor,
   };
+}
+
+/** Locale from AppContext. */
+export function useLocale() {
+  const ctx = useAppContext();
+  return [ctx.locale, ctx.setLocale];
+}
+
+/** Translation: t(key) returns string for current locale. */
+export function useT() {
+  const { locale } = useAppContext();
+  return useCallback((key) => translate(key, locale), [locale]);
 }
 
 /** Toast from non-React/async (requires AppProvider mounted). */

@@ -3,7 +3,8 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { AppContext, useAppContext } from '../../AppContext';
+import { AppContext, useAppContext, useT } from '../../AppContext';
+import { LanguageTabSwitcher } from '../common/LanguageTabSwitcher';
 import { handleFileDrop } from './fileDropHandler.js';
 import { isMobile } from '../../utils/isMobile.js';
 import { ERROR_TOAST_DURATION_MS } from '../../config';
@@ -41,6 +42,7 @@ function useErrorToast() {
 
 // Loading overlay (animation only, no progress bar)
 function LoadingOverlay() {
+  const t = useT();
   return (
     <div className="cu-loading-overlay">
       <div className="cu-loading-container">
@@ -49,7 +51,7 @@ function LoadingOverlay() {
           <div className="cu-loading-dot cu-loading-dot--1" />
           <div className="cu-loading-dot cu-loading-dot--2" />
         </div>
-        <div className="cu-loading-text">加载中…</div>
+        <div className="cu-loading-text">{t('loading')}</div>
       </div>
     </div>
   );
@@ -62,6 +64,7 @@ function EmptyState({
   onShowInfo,
   onDismiss,
 }) {
+  const t = useT();
   return (
     <div className="cu-initiation-page-overlay">
       <div className="cu-initiation-page-actions">
@@ -69,7 +72,7 @@ function EmptyState({
           type="button"
           onClick={onShowInfo}
           className="btn cu-initiation-page-btn"
-          title="查看导入说明"
+          title={t('viewInstructions')}
         >
           <Info className="cu-initiation-page-btn-icon" />
         </button>
@@ -77,7 +80,7 @@ function EmptyState({
           type="button"
           onClick={onDismiss}
           className="btn cu-initiation-page-btn cu-initiation-page-btn-close"
-          title="关闭"
+          title={t('close')}
         >
           ×
         </button>
@@ -88,18 +91,21 @@ function EmptyState({
           <Plus className="cu-initiation-page-dropzone-icon" />
         </div>
 
-        <h2 className="cu-initiation-page-title">导入 COLMAP 数据</h2>
+        <h2 className="cu-initiation-page-title">{t('importTitle')}</h2>
 
         <p className="cu-initiation-page-desc">
-          将包含 cameras / images / points3D 的目录或 ZIP 放到此处<br />
-          或点击上方加号选择文件
+          {t('importDesc')}
         </p>
 
         <div className="cu-initiation-page-help">
-          <span>支持的格式与结构</span>
+          <span>{t('supportedFormats')}</span>
           <button type="button" onClick={onShowInfo} className="cu-initiation-page-help-link">
-            查看说明
+            {t('viewInstructions')}
           </button>
+        </div>
+
+        <div className="cu-initiation-page-lang-wrap">
+          <LanguageTabSwitcher />
         </div>
       </div>
     </div>
@@ -108,13 +114,14 @@ function EmptyState({
 
 // Drag overlay (drop hint)
 function DragOverlay() {
+  const t = useT();
   return (
     <div className="cu-initiation-page-drag-overlay">
       <div className="cu-initiation-page-drag-card">
         <div className="cu-initiation-page-drag-icon">+</div>
-        <div className="cu-initiation-page-drag-title">松开即可导入</div>
+        <div className="cu-initiation-page-drag-title">{t('dragReleaseTitle')}</div>
         <div className="cu-initiation-page-drag-sub">
-          需包含 cameras、images、points3D（.bin 或 .txt）
+          {t('dragReleaseSub')}
         </div>
       </div>
     </div>
@@ -123,6 +130,7 @@ function DragOverlay() {
 
 // Load instructions modal (inline, formerly LoadInfoModal)
 function LoadInfoOverlay({ isOpen, onClose }) {
+  const t = useT();
   if (!isOpen) return null;
 
   return (
@@ -155,7 +163,7 @@ function LoadInfoOverlay({ isOpen, onClose }) {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Info style={{ width: '16px', height: '16px' }} />
-            <span>导入说明</span>
+            <span>{t('loadInfoTitle')}</span>
           </div>
           <button
             onClick={onClose}
@@ -190,30 +198,26 @@ function LoadInfoOverlay({ isOpen, onClose }) {
           color: 'var(--text-primary)'
         }}>
           <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>所需文件</h3>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>{t('requiredFiles')}</h3>
             <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-secondary)' }}>
-              <li style={{ marginBottom: '4px' }}>
-                cameras、images、points3D 各一份，扩展名为 .bin 或 .txt 均可
-              </li>
-              <li style={{ marginBottom: '4px' }}>
-                可放在任意子目录下，本工具会自动查找 sparse/0、sparse 等常见路径
-              </li>
+              <li style={{ marginBottom: '4px' }}>{t('requiredFilesList1')}</li>
+              <li style={{ marginBottom: '4px' }}>{t('requiredFilesList2')}</li>
             </ul>
           </div>
 
           <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>可选</h3>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>{t('optional')}</h3>
             <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-secondary)' }}>
-              <li style={{ marginBottom: '4px' }}>源图：jpg / png / webp / tiff</li>
-              <li style={{ marginBottom: '4px' }}>masks/ 下的遮罩图</li>
+              <li style={{ marginBottom: '4px' }}>{t('optionalList1')}</li>
+              <li style={{ marginBottom: '4px' }}>{t('optionalList2')}</li>
             </ul>
           </div>
 
           <div style={{ marginBottom: '20px' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>ZIP</h3>
+            <h3 style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>{t('zipTitle')}</h3>
             <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-secondary)' }}>
-              <li style={{ marginBottom: '4px' }}>支持打包成 ZIP（建议 &lt; 2GB），内部目录会自动扫描</li>
-              <li style={{ marginBottom: '4px' }}>图像按需读取，不一次性载入内存</li>
+              <li style={{ marginBottom: '4px' }}>{t('zipList1')}</li>
+              <li style={{ marginBottom: '4px' }}>{t('zipList2')}</li>
             </ul>
           </div>
 
@@ -224,7 +228,7 @@ function LoadInfoOverlay({ isOpen, onClose }) {
             border: '1px solid var(--border-primary)'
           }}>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-              把重建目录或 ZIP 拖入页面即可，无需事先解压或整理路径。
+              {t('importTip')}
             </div>
           </div>
         </div>

@@ -1,0 +1,12 @@
+{
+    "$schema": "./node_modules/wrangler/config-schema.json",
+    "name": "kiri-colmaputil",                 // Worker 名称
+    "compatibility_date": "2026-02-02",        // 指定兼容性日期
+    "assets": {
+      "directory": "./dist",                   // 指定静态资源目录
+      
+      "html_handling": "auto-trailing-slash",
+      "not_found_handling": "404-page",
+      "run_worker_first": false
+    }
+  }

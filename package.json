@@ -1,11 +1,13 @@
 {
   "name": "colmaputil",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "buildext": "node -e \"require('fs').mkdirSync('public',{recursive:true})\" && cd extension && npx --yes @vscode/vsce package --allow-missing-repository -o ../public/colmaputil-send.vsix",
+    "buildext:cursor": "yarn buildext && cursor --install-extension public/colmaputil-send.vsix && node extension/scripts/trigger-reload.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },

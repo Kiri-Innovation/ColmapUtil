@@ -332,6 +332,7 @@ export function handleFileDrop(context) {
     } catch (err) {
       console.error('[ZIP] Process failed:', err);
       setError(err instanceof Error ? err.message : 'ZIP process failed');
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -349,7 +350,11 @@ export function handleFileDrop(context) {
     if (e.dataTransfer.files.length === 1) {
       const single = e.dataTransfer.files[0];
       if (isZipFile(single)) {
-        await processZipFile(single);
+        try {
+          await processZipFile(single);
+        } catch (_) {
+          // 错误已由 processZipFile 通过 setError 处理
+        }
         return;
       }
     }

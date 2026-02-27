@@ -81,7 +81,8 @@ export async function loadColmapFromZip(zipFile) {
   const required = ['cameras', 'images', 'points3d'];
   const found = new Set();
   for (const k of sparseFiles.keys()) {
-    const base = k.toLowerCase().replace(/\.[^.]+$/, '');
+    const basename = k.split('/').pop() ?? k;
+    const base = basename.toLowerCase().replace(/\.[^.]+$/, '');
     if (required.includes(base)) found.add(base);
   }
   const missing = required.filter((b) => !found.has(b));

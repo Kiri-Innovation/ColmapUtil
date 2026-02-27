@@ -14,6 +14,7 @@ export const T = {
   toolbarImages: { en: 'Images', zh: '图像' },
   toolbarCameras: { en: 'Cameras', zh: '相机' },
   loading: { en: 'Loading…', zh: '加载中...' },
+  receivingAndLoading: { en: 'Receiving files and loading…', zh: '正在收取文件和加载…' },
 
   // App footer / statusbar
   points: { en: 'Points', zh: '点' },

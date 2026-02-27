@@ -1,9 +1,11 @@
 /**
  * Image-plane texture manager: load ImageBitmap from frustums + showImagePlane + selectedImageId;
  * onTextureMapUpdate(map: imageId → { bitmap, hasAlpha }). Uses blob cache for frustum thumbnails.
+ * When imageFile is missing (e.g. ZIP source where getCached is empty), uses resolveImageFromLoadedAsync.
  */
 
 import { createImageCache } from '../../utils/textureCaching.js';
+import { resolveImageFromLoadedAsync } from '../../utils/imageFileUtils.js';
 import {
   FRUSTUM_TEXTURE_MAX_DIM,
   IDLE_CALLBACK_TIMEOUT_MS,
@@ -63,20 +65,24 @@ export class ImageTextureManager {
     this._rafPending = false;
   }
 
-  /** Load textures for visible frustums; call onTextureMapUpdate when done. */
-  update(frustums, showImagePlane, selectedImageId) {
+  /** Load textures for visible frustums; call onTextureMapUpdate when done.
+   * @param {object} loadedFiles - when imageFile is missing (e.g. ZIP), async resolve is used
+   */
+  update(frustums, showImagePlane, selectedImageId, loadedFiles = null) {
     const gen = ++this._gen;
     const visible = [];
     if (frustums?.length) {
       for (const f of frustums) {
         const imageId = f.image?.imageId;
         const isSelected = imageId === selectedImageId;
-        if (!(showImagePlane || isSelected) || !f.imageFile || !f.image?.name) continue;
+        if (!(showImagePlane || isSelected) || !f.image?.name) continue;
+        if (!f.imageFile && !loadedFiles) continue;
         visible.push({
           imageId,
-          imageFile: f.imageFile,
+          imageFile: f.imageFile ?? null,
           imageName: f.image.name,
           isSelected,
+          loadedFiles: loadedFiles ?? null,
         });
       }
     }
@@ -102,20 +108,34 @@ export class ImageTextureManager {
       done();
     };
 
-    for (const { imageId, imageFile, imageName, isSelected } of visible) {
-      const hasAlpha = hasAlphaChannel(imageName);
+    const loadOne = (imageId, file, imageName, isSelected, hasAlpha) => {
+      if (!file) return;
       if (isSelected) {
-        createImageBitmap(imageFile)
+        createImageBitmap(file)
           .then((bitmap) => setOne(imageId, bitmap, hasAlpha))
           .catch(() => {
-            getBlobUrlForFrustumImage(imageFile, imageName)
+            getBlobUrlForFrustumImage(file, imageName)
               .then(blobUrlToBitmap)
               .then((bitmap) => setOne(imageId, bitmap, hasAlpha));
           });
       } else {
-        getBlobUrlForFrustumImage(imageFile, imageName)
+        getBlobUrlForFrustumImage(file, imageName)
           .then(blobUrlToBitmap)
           .then((bitmap) => setOne(imageId, bitmap, hasAlpha));
+      }
+    };
+
+    for (const { imageId, imageFile, imageName, isSelected, loadedFiles: lf } of visible) {
+      const hasAlpha = hasAlphaChannel(imageName);
+      if (imageFile) {
+        loadOne(imageId, imageFile, imageName, isSelected, hasAlpha);
+      } else if (lf) {
+        resolveImageFromLoadedAsync(lf, imageName)
+          .then((file) => {
+            if (gen !== this._gen || !file) return;
+            loadOne(imageId, file, imageName, isSelected, hasAlpha);
+          })
+          .catch(() => {});
       }
     }
 

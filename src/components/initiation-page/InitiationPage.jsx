@@ -57,6 +57,80 @@ function LoadingOverlay() {
   );
 }
 
+// Extension postMessage: receiving zip + loading
+function ExtensionReceivingOverlay() {
+  const t = useT();
+  return (
+    <div className="cu-loading-overlay">
+      <div className="cu-loading-container">
+        <div className="cu-loading-dots">
+          <div className="cu-loading-dot cu-loading-dot--0" />
+          <div className="cu-loading-dot cu-loading-dot--1" />
+          <div className="cu-loading-dot cu-loading-dot--2" />
+        </div>
+        <div className="cu-loading-text">{t('receivingAndLoading')}</div>
+      </div>
+    </div>
+  );
+}
+
+// Listens for postMessage: handshake (close drag modal, open receiving modal), then chunks with ack
+function ExtensionZipListener({ context }) {
+  const { processZipFile } = handleFileDrop(context);
+  const { setExtensionReceiving, setExtensionReceiveFailed } = context;
+  const chunksRef = useRef({});
+  const totalRef = useRef(0);
+  useEffect(() => {
+    const handler = (event) => {
+      const d = event?.data;
+      if (!d) return;
+      if (d.type === 'colmaputil-handshake') {
+        setExtensionReceiveFailed(false);
+        setExtensionReceiving(true);
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'colmaputil-ready-ack' }, '*');
+        }
+        return;
+      }
+      if (d.type === 'colmaputil-chunk') {
+        const { index, total, data } = d;
+        if (typeof index !== 'number' || typeof total !== 'number' || typeof data !== 'string') return;
+        totalRef.current = total;
+        chunksRef.current[index] = data;
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'colmaputil-chunk-ack', index }, '*');
+        }
+        const received = Object.keys(chunksRef.current).length;
+        if (received !== total) return;
+        const parts = [];
+        for (let i = 0; i < total; i++) parts.push(chunksRef.current[i]);
+        chunksRef.current = {};
+        const base64 = parts.join('');
+        try {
+          const binary = atob(base64);
+          const arr = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+          const file = new File([new Blob([arr], { type: 'application/zip' })], 'colmap.zip', { type: 'application/zip' });
+          processZipFile(file)
+            .catch(() => setExtensionReceiveFailed(true))
+            .finally(() => setExtensionReceiving(false));
+        } catch (err) {
+          console.error('[ColmapUtil] Extension zip load failed:', err);
+          setExtensionReceiveFailed(true);
+          setExtensionReceiving(false);
+        }
+        return;
+      }
+    };
+    window.addEventListener('message', handler);
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'colmaputil-page-ready' }, '*');
+    }
+    return () => window.removeEventListener('message', handler);
+  }, [processZipFile, setExtensionReceiving, setExtensionReceiveFailed]);
+  return null;
+}
+
 
 // Empty state (dropzone + info)
 function EmptyState({
@@ -241,7 +315,7 @@ export function InitiationPage({ children }) {
   const { isDragging, isDismissed, startDrag, stopDrag, dismiss } = useDragDropState();
   const { error, clearError } = useErrorToast();
   const [showInfoModal, setShowInfoModal] = useState(false);
-  const { loading, colmapData } = useAppContext();
+  const { loading, colmapData, extensionReceiving, setExtensionReceiving, extensionReceiveFailed } = useAppContext();
 
   const handleDragEnter = useCallback((e) => {
     e.preventDefault();
@@ -264,8 +338,8 @@ export function InitiationPage({ children }) {
   return (
     <AppContext.Consumer>
       {(context) => {
-        const { handleDrop, handleDragOver, handleBrowse } = handleFileDrop(context);
-        const shouldShowEmptyState = !colmapData && !loading && !isDragging && !isDismissed && !mobile;
+        const { handleDrop, handleDragOver, handleBrowse, processZipFile } = handleFileDrop(context);
+        const shouldShowEmptyState = !colmapData && !loading && !isDragging && !isDismissed && !mobile && !extensionReceiving && !extensionReceiveFailed;
         const handleFileDropAsync = async (e) => {
           stopDrag();
           await handleDrop(e);
@@ -278,6 +352,7 @@ export function InitiationPage({ children }) {
       onDragOver={handleDragOver}
       onDrop={handleFileDropAsync}
     >
+      <ExtensionZipListener context={context} />
       {children}
 
       {isDragging && <DragOverlay />}
@@ -290,7 +365,9 @@ export function InitiationPage({ children }) {
         />
       )}
 
-      {loading && <LoadingOverlay />}
+      {loading && !extensionReceiving && <LoadingOverlay />}
+
+      {extensionReceiving && <ExtensionReceivingOverlay />}
 
       {error && (
         <div className="cu-toast-container-with-layout cu-toast-error">

@@ -826,8 +826,8 @@ export function ColmapVisualizer() {
     imageTextureManagerRef.current = new ImageTextureManager({ onTextureMapUpdate: handleTextureMapUpdate });
   }
   useEffect(() => {
-    imageTextureManagerRef.current?.update(frustums, showImagePlane, selectedImageId);
-  }, [frustums, showImagePlane, selectedImageId]);
+    imageTextureManagerRef.current?.update(frustums, showImagePlane, selectedImageId, loadedFiles);
+  }, [frustums, showImagePlane, selectedImageId, loadedFiles]);
 
   useEffect(() => {
     const pipeline = pipelineRef.current;

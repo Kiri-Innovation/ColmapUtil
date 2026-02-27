@@ -66,6 +66,8 @@ export function AppProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [sourceType, setSourceTypeState] = useState(null);
+  const [extensionReceiving, setExtensionReceiving] = useState(false);
+  const [extensionReceiveFailed, setExtensionReceiveFailed] = useState(false);
 
   const sourceTypeRef = useRef(null);
   useEffect(() => {
@@ -76,6 +78,7 @@ export function AppProvider({ children }) {
     setColmapDataState(value);
     setLoading(false);
     setError(null);
+    if (value) setExtensionReceiveFailed(false);
   }, []);
 
   const setSourceInfo = useCallback((sourceTypeValue) => {
@@ -92,6 +95,7 @@ export function AppProvider({ children }) {
     setError(null);
     setLoading(false);
     setSourceTypeState(null);
+    setExtensionReceiveFailed(false);
   }, []);
 
   const pointCount = useMemo(
@@ -265,6 +269,10 @@ export function AppProvider({ children }) {
       error,
       sourceType,
       sourceTypeRef,
+      extensionReceiving,
+      setExtensionReceiving,
+      extensionReceiveFailed,
+      setExtensionReceiveFailed,
       setColmapData,
       setLoadedFiles,
       setDroppedFiles,
@@ -333,6 +341,10 @@ export function AppProvider({ children }) {
       loading,
       error,
       sourceType,
+      extensionReceiving,
+      setExtensionReceiving,
+      extensionReceiveFailed,
+      setExtensionReceiveFailed,
       setColmapData,
       setLoadedFiles,
       setDroppedFiles,

@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { settings, DEFAULTS } from '../../utils/settings';
 import { useT } from '../../AppContext';
 import { LanguageTabSwitcher } from './LanguageTabSwitcher';
-import { ExtensionModal } from './ExtensionModal';
 import { Puzzle } from 'lucide-react';
+import { navigateToExtension, isExtensionPath } from '../../utils/extensionModalUrl';
 
 /**
  * Settings Modal - 简单的设置弹窗
@@ -11,15 +11,14 @@ import { Puzzle } from 'lucide-react';
 export function SettingsModal({ isOpen, onClose }) {
   const modalRef = useRef(null);
   const [isResetting, setIsResetting] = useState(false);
-  const [isExtensionModalOpen, setIsExtensionModalOpen] = useState(false);
   const t = useT();
 
-  // 点击外部关闭（插件弹窗打开时不关闭设置弹窗）
+  // 点击外部关闭（插件弹窗打开时不关设置弹窗）
   useEffect(() => {
     if (!isOpen) return;
 
     const handleClickOutside = (e) => {
-      if (isExtensionModalOpen) return;
+      if (isExtensionPath()) return;
       if (modalRef.current && !modalRef.current.contains(e.target)) {
         onClose();
       }
@@ -29,27 +28,21 @@ export function SettingsModal({ isOpen, onClose }) {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen, onClose, isExtensionModalOpen]);
+  }, [isOpen, onClose]);
 
-  // ESC 键：插件弹窗打开时只关插件弹窗，否则关设置弹窗
+  // ESC 键关闭（插件弹窗打开时由插件弹窗处理 ESC，此处不关设置弹窗）
   useEffect(() => {
     if (!isOpen) return;
 
     const handleEscape = (e) => {
-      if (e.key === 'Escape') {
-        if (isExtensionModalOpen) {
-          setIsExtensionModalOpen(false);
-        } else {
-          onClose();
-        }
-      }
+      if (e.key === 'Escape' && !isExtensionPath()) onClose();
     };
 
     document.addEventListener('keydown', handleEscape);
     return () => {
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [isOpen, onClose, isExtensionModalOpen]);
+  }, [isOpen, onClose]);
 
   // 清除所有偏好设置
   const handleClearPreferences = () => {
@@ -109,7 +102,7 @@ export function SettingsModal({ isOpen, onClose }) {
             <LanguageTabSwitcher />
           </div>
           <button
-            onClick={() => setIsExtensionModalOpen(true)}
+            onClick={navigateToExtension}
             className="w-full text-sm flex items-center justify-center gap-2"
             style={{
               padding: '6px 12px',
@@ -143,10 +136,6 @@ export function SettingsModal({ isOpen, onClose }) {
           </button>
         </div>
       </div>
-      <ExtensionModal
-        isOpen={isExtensionModalOpen}
-        onClose={() => setIsExtensionModalOpen(false)}
-      />
     </div>
   );
 }

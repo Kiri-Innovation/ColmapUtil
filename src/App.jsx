@@ -6,9 +6,11 @@ import { ColmapVisualizer } from './components/visualizer/ColmapVisualizer';
 import { ImageGallery } from './components/sidebar/ImageGallery';
 import { ImageDetailPanel } from './components/sidebar/ImageDetailPanel';
 import { ToastContainer } from './components/common/ToastContainer';
+import { ExtensionModal } from './components/common/ExtensionModal';
 import { AppProvider, useAppContext, useUI, useSelection, useT } from './AppContext';
 import { LanguageSwitcher } from './components/common/LanguageSwitcher';
 import { isMobile } from './utils/isMobile.js';
+import { useExtensionModalUrl, navigateAwayFromExtension } from './utils/extensionModalUrl';
 import './App.css';
 import './styles/design-system.css';
 
@@ -324,12 +326,18 @@ function ContextRefsSetup() {
 }
 
 function App() {
+  const isExtensionModalOpen = useExtensionModalUrl();
+
   return (
     <AppProvider>
       <ContextRefsSetup />
       <InitiationPage>
         <MainLayout />
       </InitiationPage>
+      <ExtensionModal
+        isOpen={isExtensionModalOpen}
+        onClose={navigateAwayFromExtension}
+      />
     </AppProvider>
   );
 }

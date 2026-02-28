@@ -7,6 +7,7 @@ import { AppContext, useAppContext, useT } from '../../AppContext';
 import { LanguageTabSwitcher } from '../common/LanguageTabSwitcher';
 import { handleFileDrop } from './fileDropHandler.js';
 import { isMobile } from '../../utils/isMobile.js';
+import { isExtensionPath } from '../../utils/extensionModalUrl';
 import { ERROR_TOAST_DURATION_MS } from '../../config';
 import { Info, Plus, X } from 'lucide-react';
 import './InitiationPage.css';
@@ -315,7 +316,23 @@ export function InitiationPage({ children }) {
   const { isDragging, isDismissed, startDrag, stopDrag, dismiss } = useDragDropState();
   const { error, clearError } = useErrorToast();
   const [showInfoModal, setShowInfoModal] = useState(false);
-  const { loading, colmapData, extensionReceiving, setExtensionReceiving, extensionReceiveFailed } = useAppContext();
+  const { loading, colmapData, extensionReceiving, extensionReceiveFailed } = useAppContext();
+  const mobile = isMobile();
+
+  const shouldShowEmptyState = !colmapData && !loading && !isDragging && !isDismissed && !mobile && !extensionReceiving && !extensionReceiveFailed && !isExtensionPath();
+
+  // ESC 关闭：优先关「查看说明」弹窗，否则关 initiation 空状态
+  useEffect(() => {
+    if (!shouldShowEmptyState && !showInfoModal) return;
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        if (showInfoModal) setShowInfoModal(false);
+        else if (shouldShowEmptyState) dismiss();
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [shouldShowEmptyState, showInfoModal, dismiss]);
 
   const handleDragEnter = useCallback((e) => {
     e.preventDefault();
@@ -333,13 +350,10 @@ export function InitiationPage({ children }) {
     }
   }, [stopDrag]);
 
-  const mobile = isMobile();
-
   return (
     <AppContext.Consumer>
       {(context) => {
         const { handleDrop, handleDragOver, handleBrowse, processZipFile } = handleFileDrop(context);
-        const shouldShowEmptyState = !colmapData && !loading && !isDragging && !isDismissed && !mobile && !extensionReceiving && !extensionReceiveFailed;
         const handleFileDropAsync = async (e) => {
           stopDrag();
           await handleDrop(e);

@@ -3,6 +3,7 @@
  * 使用 createPortal 挂载到 body，确保 z-index 最高且完全遮挡背后交互
  */
 
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from '../../AppContext';
 import { Download } from 'lucide-react';
@@ -13,6 +14,15 @@ const EXTENSION_VSIX_URL = '/colmaputil-send.vsix';
 
 export function ExtensionModal({ isOpen, onClose }) {
   const t = useT();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 

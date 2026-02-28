@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { settings, DEFAULTS } from '../../utils/settings';
 import { useT } from '../../AppContext';
 import { LanguageTabSwitcher } from './LanguageTabSwitcher';
+import { ExtensionModal } from './ExtensionModal';
+import { Puzzle } from 'lucide-react';
 
 /**
  * Settings Modal - 简单的设置弹窗
@@ -9,13 +11,15 @@ import { LanguageTabSwitcher } from './LanguageTabSwitcher';
 export function SettingsModal({ isOpen, onClose }) {
   const modalRef = useRef(null);
   const [isResetting, setIsResetting] = useState(false);
+  const [isExtensionModalOpen, setIsExtensionModalOpen] = useState(false);
   const t = useT();
 
-  // 点击外部关闭
+  // 点击外部关闭（插件弹窗打开时不关闭设置弹窗）
   useEffect(() => {
     if (!isOpen) return;
-    
+
     const handleClickOutside = (e) => {
+      if (isExtensionModalOpen) return;
       if (modalRef.current && !modalRef.current.contains(e.target)) {
         onClose();
       }
@@ -25,23 +29,27 @@ export function SettingsModal({ isOpen, onClose }) {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, isExtensionModalOpen]);
 
-  // ESC 键关闭
+  // ESC 键：插件弹窗打开时只关插件弹窗，否则关设置弹窗
   useEffect(() => {
     if (!isOpen) return;
-    
+
     const handleEscape = (e) => {
       if (e.key === 'Escape') {
-        onClose();
+        if (isExtensionModalOpen) {
+          setIsExtensionModalOpen(false);
+        } else {
+          onClose();
+        }
       }
     };
-    
+
     document.addEventListener('keydown', handleEscape);
     return () => {
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, isExtensionModalOpen]);
 
   // 清除所有偏好设置
   const handleClearPreferences = () => {
@@ -101,6 +109,22 @@ export function SettingsModal({ isOpen, onClose }) {
             <LanguageTabSwitcher />
           </div>
           <button
+            onClick={() => setIsExtensionModalOpen(true)}
+            className="w-full text-sm flex items-center justify-center gap-2"
+            style={{
+              padding: '6px 12px',
+              borderRadius: '4px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg-hover)',
+              color: 'var(--text-primary)',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            <Puzzle className="w-4 h-4" />
+            {t('cursorExtension')}
+          </button>
+          <button
             onClick={handleClearPreferences}
             disabled={isResetting}
             className="w-full text-sm"
@@ -119,6 +143,10 @@ export function SettingsModal({ isOpen, onClose }) {
           </button>
         </div>
       </div>
+      <ExtensionModal
+        isOpen={isExtensionModalOpen}
+        onClose={() => setIsExtensionModalOpen(false)}
+      />
     </div>
   );
 }

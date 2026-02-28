@@ -1,31 +1,54 @@
 const vscode = require('vscode');
 const { Writable } = require('stream');
-// 开发时用本地；发布前可改回 https://colmap.utils.kiriengine.com/
-const COLMAP_UTIL_URL = 'http://localhost:5173/';
-const IFRAME_ORIGIN = 'http://localhost:5173';
+// 使用线上部署地址；开发时可改回 http://localhost:5173
+const COLMAP_UTIL_URL = 'https://colmap.utils.kiriengine.com/';
+const IFRAME_ORIGIN = 'https://colmap.utils.kiriengine.com';
 const ZIP_CHUNK_SIZE = 1024 * 1024; // 1MB（base64 约 1.33MB/条，一般 postMessage 可接受）
 
-function countFilesInDir(dirPath) {
-  const fs = require('fs');
-  const path = require('path');
-  let count = 0;
-  const stack = [dirPath];
+/** 一次遍历收集文件列表，避免重复扫描 */
+async function collectFiles(dirUri, prefix) {
+  const fileList = [];
+  const stack = [{ uri: dirUri, prefix }];
   while (stack.length) {
-    const current = stack.pop();
-    const names = fs.readdirSync(current);
-    for (const name of names) {
-      const full = path.join(current, name);
-      const stat = fs.statSync(full);
-      if (stat.isDirectory()) stack.push(full);
-      else count++;
+    const { uri, prefix: p } = stack.pop();
+    const entries = await vscode.workspace.fs.readDirectory(uri);
+    for (const [name, fileType] of entries) {
+      const childUri = vscode.Uri.joinPath(uri, name);
+      const archiveName = p + name;
+      if ((fileType & vscode.FileType.Directory) !== 0) {
+        stack.push({ uri: childUri, prefix: archiveName + '/' });
+      } else {
+        fileList.push({ uri: childUri, name: archiveName });
+      }
     }
   }
-  return count;
+  return fileList;
 }
 
-function zipFolderToBuffer(folderPath, onProgress) {
+/** 节流：每 N 个文件或每 M 毫秒最多上报一次，减少 SSH 下的 postMessage 往返 */
+function throttleProgress(intervalMs, intervalCount, onProgress) {
+  let lastTime = 0;
+  let lastCount = -1;
+  return (processed, total) => {
+    const now = Date.now();
+    const shouldSend = processed === total ||
+      processed - lastCount >= intervalCount ||
+      now - lastTime >= intervalMs;
+    if (shouldSend && onProgress) {
+      lastTime = now;
+      lastCount = processed;
+      onProgress(processed, total);
+    }
+  };
+}
+
+/** 使用 workspace.fs 打包，支持 SSH Remote 等远程 URI */
+async function zipFolderToBuffer(folderUri, onProgress, onScanning) {
   const archiver = require('archiver');
-  const totalFiles = countFilesInDir(folderPath);
+  if (onScanning) onScanning();
+  const fileList = await collectFiles(folderUri, '');
+  const totalFiles = fileList.length;
+  const throttled = onProgress ? throttleProgress(300, 20, onProgress) : null;
   return new Promise((resolve, reject) => {
     const chunks = [];
     const writable = new Writable({
@@ -37,14 +60,17 @@ function zipFolderToBuffer(folderPath, onProgress) {
     writable.on('finish', () => resolve(Buffer.concat(chunks)));
     const archive = archiver('zip', { zlib: { level: 6 } });
     archive.on('error', reject);
-    let processed = 0;
-    archive.on('entry', () => {
-      processed++;
-      if (onProgress) onProgress(processed, totalFiles);
-    });
     archive.pipe(writable);
-    archive.directory(folderPath, false);
-    archive.finalize();
+    let processed = 0;
+    (async () => {
+      for (const { uri, name } of fileList) {
+        const data = await vscode.workspace.fs.readFile(uri);
+        archive.append(Buffer.from(data), { name });
+        processed++;
+        if (throttled) throttled(processed, totalFiles);
+      }
+      archive.finalize();
+    })().catch(reject);
   });
 }
 
@@ -116,6 +142,13 @@ function getWebviewContent() {
           if (d.type === 'colmaputil-chunk-ack' && typeof d.index === 'number') sendToExtension({ type: 'chunkAck', index: d.index });
           return;
         }
+        if (d.type === 'colmaputil-scanning') {
+          var el = document.getElementById('progress-fill');
+          var text = document.getElementById('progress-text');
+          if (el) el.style.width = '0%';
+          if (text) text.textContent = '扫描目录中...';
+          return;
+        }
         if (d.type === 'colmaputil-zipProgress') {
           var el = document.getElementById('progress-fill');
           var text = document.getElementById('progress-text');
@@ -159,10 +192,12 @@ function getWebviewContent() {
           return;
         }
         if (d.type === 'colmaputil-error') {
+          document.getElementById('compressing-view').classList.add('hidden');
           var bar = document.getElementById('send-progress-bar');
           var text = document.getElementById('send-progress-text');
           bar.classList.add('visible', 'error');
-          bar.querySelector('.send-progress-fill').style.display = 'none';
+          var fillWrap = bar.querySelector('.send-progress-fill');
+          if (fillWrap) fillWrap.style.display = 'none';
           if (text) text.textContent = '错误: ' + (d.message || '未知错误');
           return;
         }
@@ -233,12 +268,20 @@ function activate(context) {
         if (msg.type === 'compressingViewReady' && folderUri) {
           (async () => {
             try {
-              zipBuffer = await zipFolderToBuffer(folderUri.fsPath, (processed, total) => {
-                panel.webview.postMessage({ type: 'colmaputil-zipProgress', processed, total });
-              });
+              zipBuffer = await zipFolderToBuffer(
+                folderUri,
+                (processed, total) => {
+                  panel.webview.postMessage({ type: 'colmaputil-zipProgress', processed, total });
+                },
+                () => {
+                  panel.webview.postMessage({ type: 'colmaputil-scanning' });
+                }
+              );
               panel.webview.postMessage({ type: 'colmaputil-zipDone' });
             } catch (e) {
-              void vscode.window.showErrorMessage('打包失败: ' + (e && e.message));
+              const errMsg = (e && e.message) ? String(e.message) : '打包失败';
+              void vscode.window.showErrorMessage('打包失败: ' + errMsg);
+              panel.webview.postMessage({ type: 'colmaputil-error', message: errMsg });
             }
           })();
           return;

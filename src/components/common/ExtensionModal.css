@@ -1,0 +1,138 @@
+/**
+ * ExtensionModal 全屏弹窗样式
+ * 使用 createPortal 挂载到 body，z-index 最高，完全遮挡背后内容
+ */
+
+.cu-extension-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  pointer-events: auto;
+}
+
+.cu-extension-modal-actions {
+  position: absolute;
+  top: var(--sp-4);
+  right: var(--sp-4);
+  display: flex;
+  gap: var(--sp-2);
+  z-index: 1;
+}
+
+.cu-extension-modal-btn-close {
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  background: rgba(45, 45, 48, 0.3);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color var(--transition-base), background-color var(--transition-base), color var(--transition-base);
+}
+
+.cu-extension-modal-btn-close:hover {
+  border-color: var(--accent-primary);
+  background-color: rgba(45, 45, 48, 0.5);
+  color: var(--text-primary);
+}
+
+.cu-extension-modal-content {
+  text-align: center;
+  max-width: 520px;
+  padding: 0 var(--sp-6);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+
+.cu-extension-modal-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-3);
+}
+
+.cu-extension-modal-desc {
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+/* 下载按钮：标题/简介下方、正文上方，非拖拽区样式 */
+.cu-extension-modal-download-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 10px 20px;
+  margin-bottom: var(--sp-8);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: #fff;
+  background-color: var(--info);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.cu-extension-modal-download-btn:hover {
+  opacity: 0.9;
+}
+
+.cu-extension-modal-download-btn:active {
+  transform: scale(0.98);
+}
+
+.cu-extension-modal-download-btn-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.cu-extension-modal-section {
+  text-align: left;
+  margin-bottom: var(--sp-6);
+}
+
+.cu-extension-modal-section:last-child {
+  margin-bottom: 0;
+}
+
+.cu-extension-modal-section-title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-2);
+}
+
+.cu-extension-modal-section-body {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.cu-extension-modal-section-body li {
+  margin-bottom: var(--sp-1);
+}
+
+.cu-extension-modal-section-body li:last-child {
+  margin-bottom: 0;
+}
+
+.cu-extension-modal-lang-wrap {
+  margin-top: var(--sp-8);
+  display: flex;
+  justify-content: center;
+}

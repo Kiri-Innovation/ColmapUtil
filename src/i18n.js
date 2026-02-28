@@ -69,7 +69,55 @@ export const T = {
   // Settings modal
   settings: { en: 'Settings', zh: '设置' },
   language: { en: 'Language', zh: '语言' },
+  cursorExtension: { en: 'Cursor / VSCode Extension', zh: 'Cursor / VSCode 插件' },
   clearPreferences: { en: 'Clear preferences', zh: '清除偏好设置' },
+
+  // Extension modal
+  extensionModalTitle: { en: 'Send to ColmapUtil — Cursor / VSCode Extension', zh: 'Send to ColmapUtil — Cursor / VSCode 插件' },
+  extensionDownload: { en: 'Download Extension (.vsix)', zh: '下载插件 (.vsix)' },
+  extensionFeaturesTitle: { en: 'Features', zh: '功能介绍' },
+  extensionFeaturesDesc: {
+    en: 'This extension lets you send a COLMAP project folder directly to ColmapUtil from Cursor or VSCode.',
+    zh: '该插件支持在 Cursor 或 VSCode 中，将 COLMAP 项目文件夹直接发送到 ColmapUtil 网页。',
+  },
+  extensionFeature1: {
+    en: 'Right-click a folder in Explorer → "Send to ColmapUtil"',
+    zh: '在资源管理器中右键文件夹 → 选择「Send to ColmapUtil」',
+  },
+  extensionFeature2: {
+    en: 'Automatically packs the folder into a ZIP and sends it to the web app',
+    zh: '自动将文件夹打包为 ZIP 并发送到网页工具',
+  },
+  extensionFeature3: {
+    en: 'Supports SSH Remote and other remote workspaces',
+    zh: '支持 SSH Remote 等远程工作区',
+  },
+  extensionInstallTitle: { en: 'Installation', zh: '安装方式' },
+  extensionInstallStep1: {
+    en: 'Download the .vsix file using the button above',
+    zh: '点击上方按钮下载 .vsix 文件',
+  },
+  extensionInstallStep2: {
+    en: 'In Cursor/VSCode: open Command Palette (Cmd/Ctrl+Shift+P) → "Extensions: Install from VSIX..."',
+    zh: '在 Cursor/VSCode 中：打开命令面板 (Cmd/Ctrl+Shift+P) → 输入「Extensions: Install from VSIX...」',
+  },
+  extensionInstallStep3: {
+    en: 'Select the downloaded colmaputil-send.vsix file to install',
+    zh: '选择下载的 colmaputil-send.vsix 文件完成安装',
+  },
+  extensionUsageTitle: { en: 'Usage', zh: '使用方式' },
+  extensionUsageStep1: {
+    en: 'Open a workspace containing a COLMAP reconstruction folder (with cameras, images, points3D)',
+    zh: '打开包含 COLMAP 重建文件夹的工作区（需有 cameras、images、points3D）',
+  },
+  extensionUsageStep2: {
+    en: 'In the Explorer sidebar, right-click the folder you want to send',
+    zh: '在左侧资源管理器中，右键要发送的文件夹',
+  },
+  extensionUsageStep3: {
+    en: 'Select "Send to ColmapUtil" — the folder will be packed and opened in ColmapUtil',
+    zh: '选择「Send to ColmapUtil」— 文件夹将被打包并在 ColmapUtil 中打开',
+  },
   resetting: { en: 'Resetting…', zh: '正在重置...' },
   clearPreferencesConfirm: {
     en: 'Clear all preferences? This will reset all local settings (e.g. camera scale, point size) to defaults.',

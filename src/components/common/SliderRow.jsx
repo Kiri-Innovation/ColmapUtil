@@ -1,17 +1,36 @@
 /**
- * 数值滑块 + 可编辑文本框，支持滚轮微调
+ * 数值滑块 + 可编辑文本框，支持滚轮微调。
+ * 可选 valueToSlider / sliderToValue：滑条使用非线性刻度（如对数），value 仍为实际数值。
  */
 
 import { useState, useEffect, memo, useRef } from 'react';
 
-export const SliderRow = memo(function SliderRow({ label, value, min, max, step, onChange, formatValue }) {
+export const SliderRow = memo(function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  formatValue,
+  valueToSlider,
+  sliderToValue,
+  sliderMin = 0,
+  sliderMax = 100,
+  sliderStep = 1,
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [inputText, setInputText] = useState('');
   const inputRef = useRef(null);
 
+  const useLogScale = typeof valueToSlider === 'function' && typeof sliderToValue === 'function';
   const safeVal = value ?? min;
   const displayVal = formatValue ? formatValue(safeVal) : String(safeVal);
-  const progressPct = ((safeVal - min) / (max - min)) * 100;
+  const sliderVal = useLogScale ? valueToSlider(safeVal) : safeVal;
+  const rangeMin = useLogScale ? sliderMin : min;
+  const rangeMax = useLogScale ? sliderMax : max;
+  const rangeStep = useLogScale ? sliderStep : step;
+  const progressPct = ((sliderVal - rangeMin) / (rangeMax - rangeMin)) * 100;
 
   useEffect(() => {
     if (!isEditing) setInputText(displayVal);
@@ -39,10 +58,22 @@ export const SliderRow = memo(function SliderRow({ label, value, min, max, step,
     if (e.key === 'Escape') finishEdit(false);
   };
 
+  const handleRangeChange = (e) => {
+    const v = parseFloat(e.target.value);
+    const nextVal = useLogScale ? sliderToValue(v) : v;
+    onChange(Math.min(max, Math.max(min, nextVal)));
+  };
+
   const handleWheel = (e) => {
     e.preventDefault();
-    const stepDir = e.deltaY > 0 ? -step : step;
-    onChange(Math.min(max, Math.max(min, safeVal + stepDir)));
+    if (useLogScale) {
+      const stepDir = e.deltaY > 0 ? -sliderStep : sliderStep;
+      const nextSlider = Math.min(rangeMax, Math.max(rangeMin, sliderVal + stepDir));
+      onChange(Math.min(max, Math.max(min, sliderToValue(nextSlider))));
+    } else {
+      const stepDir = e.deltaY > 0 ? -step : step;
+      onChange(Math.min(max, Math.max(min, safeVal + stepDir)));
+    }
   };
 
   return (
@@ -51,11 +82,11 @@ export const SliderRow = memo(function SliderRow({ label, value, min, max, step,
       <div className="flex items-center gap-2">
         <input
           type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={safeVal}
-          onChange={(e) => onChange(parseFloat(e.target.value))}
+          min={rangeMin}
+          max={rangeMax}
+          step={rangeStep}
+          value={sliderVal}
+          onChange={handleRangeChange}
           className="cu-control-slider flex-1"
           style={{ '--range-progress': `${progressPct}%` }}
         />

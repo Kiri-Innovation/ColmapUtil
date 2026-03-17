@@ -168,6 +168,7 @@ export const T = {
   exportZip: { en: 'Export as ZIP', zh: '导出压缩包 (.zip)' },
   cameraMode: { en: 'Camera mode', zh: '相机模式' },
   projection: { en: 'Projection', zh: '投影' },
+  cameraSpeedScale: { en: 'Move speed', zh: '移动速度' },
   quickMove: { en: 'Quick move', zh: '快捷移动' },
   resetView: { en: 'Reset view (R)', zh: '重置视图 (R)' },
   desktopOnly: { en: 'Desktop Only', zh: 'Desktop Only' },

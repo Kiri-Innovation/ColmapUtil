@@ -1116,11 +1116,22 @@ function ExportControls() {
   );
 }
 
+// 速度倍率滑条：0.1–10 对数刻度，小倍率时更精细。position ∈ [0,100] ↔ mult = 0.1 * 10^(2*position/100)
+const CAMERA_SPEED_SCALE_MIN = 0.1;
+const CAMERA_SPEED_SCALE_MAX = 10;
+function cameraSpeedScaleToSlider(mult) {
+  return 50 * (Math.log10(Math.max(CAMERA_SPEED_SCALE_MIN, mult)) + 1);
+}
+function sliderToCameraSpeedScale(position) {
+  return CAMERA_SPEED_SCALE_MIN * Math.pow(10, (2 * position) / 100);
+}
+
 // View button (includes Camera Mode)
 function ViewButton({ activePanel, setActivePanel }) {
   const [cameraProjection, setCameraProjection] = useSetting('camera', 'cameraProjection');
   const [cameraFov, setCameraFov] = useSetting('camera', 'cameraFov');
   const [cameraMode, setCameraMode] = useSetting('camera', 'cameraMode');
+  const [cameraSpeedScale, setCameraSpeedScale] = useSetting('camera', 'cameraSpeedScale');
   const { resetView, setView } = useUI();
   const t = useT();
   
@@ -1204,6 +1215,22 @@ function ViewButton({ activePanel, setActivePanel }) {
             formatValue={v => `${v}°`}
           />
         )}
+
+        {/* Move speed scale: 0.1×–10×, log scale for finer control at low values */}
+        <SliderRow
+          label={t('cameraSpeedScale')}
+          value={cameraSpeedScale}
+          min={CAMERA_SPEED_SCALE_MIN}
+          max={CAMERA_SPEED_SCALE_MAX}
+          step={0.01}
+          onChange={setCameraSpeedScale}
+          formatValue={v => `${Number(v).toFixed(2)}×`}
+          valueToSlider={cameraSpeedScaleToSlider}
+          sliderToValue={sliderToCameraSpeedScale}
+          sliderMin={0}
+          sliderMax={100}
+          sliderStep={1}
+        />
 
         {/* View direction buttons */}
         <div className="flex flex-col gap-1.5" style={{ marginBottom: '12px' }}>

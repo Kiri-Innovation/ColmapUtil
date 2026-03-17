@@ -46,7 +46,7 @@ const IMAGE_PLANE_ALPHA_UNSELECTED = 0.3;
 const IMAGE_PLANE_ALPHA_MATCHED_SELECTED = 0.7;
 
 /** 有 Colmap 数据时：cameraSpeedMultiplier = _SPEED_MULTIPLIER * magnitudeD；无数据时用 0.5 */
-const _SPEED_MULTIPLIER = 0.1;
+const _SPEED_MULTIPLIER = 0.05;
 
 const DEFAULT_CAMERA = {
   id: 0,
@@ -120,6 +120,7 @@ export function ColmapVisualizer() {
   const [cameraProjection] = useSetting('camera', 'cameraProjection');
   const [cameraFov, setCameraFov] = useSetting('camera', 'cameraFov');
   const [cameraMode] = useSetting('camera', 'cameraMode');
+  const [cameraSpeedScale] = useSetting('camera', 'cameraSpeedScale');
   const [selectionColorMode] = useSetting('camera', 'selectionColorMode');
   const [selectionColor] = useSetting('camera', 'selectionColor');
   const [selectionAnimationSpeed] = useSetting('camera', 'selectionAnimationSpeed');
@@ -228,7 +229,11 @@ export function ColmapVisualizer() {
     }
   }, [colmapData]);
 
-  const cameraSpeedMultiplier = magnitudeD > 0 ? _SPEED_MULTIPLIER * magnitudeD : 0.5;
+  const baseSpeedMultiplier = magnitudeD > 0 ? _SPEED_MULTIPLIER * magnitudeD : 0.5;
+  const speedScale = typeof cameraSpeedScale === 'number' && Number.isFinite(cameraSpeedScale)
+    ? Math.max(0.1, Math.min(10, cameraSpeedScale))
+    : 1;
+  const cameraSpeedMultiplier = baseSpeedMultiplier * speedScale;
 
   // Camera control: orbit vs FPS hook by store
   const isOrbitMode = cameraMode === 'orbit';

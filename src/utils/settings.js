@@ -32,6 +32,7 @@ const DEFAULTS = {
     cameraMode: 'orbit',
     cameraProjection: 'perspective',
     cameraFov: 60,
+    cameraSpeedScale: 1, // 0.1–10，乘到 cameraSpeedMultiplier 上的倍率，对数滑条
     horizonLock: 'off',
     autoRotateMode: 'off',
     autoRotateSpeed: 0.5,

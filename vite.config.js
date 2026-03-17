@@ -19,8 +19,9 @@ export default defineConfig({
   },
 
   server: {
-    port: 5173,
-    open: true,
+    port: 8828,
+    host: true, // 监听 0.0.0.0，便于通过本机 IP（如 117.50.223.121:8828）从主机浏览器访问
+    open: false,
   },
 
   build: {

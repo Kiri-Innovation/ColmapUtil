@@ -45,6 +45,9 @@ const IMAGE_PLANE_ALPHA_SELECTED = 1.0;
 const IMAGE_PLANE_ALPHA_UNSELECTED = 0.3;
 const IMAGE_PLANE_ALPHA_MATCHED_SELECTED = 0.7;
 
+/** 有 Colmap 数据时：cameraSpeedMultiplier = _SPEED_MULTIPLIER * magnitudeD；无数据时用 0.5 */
+const _SPEED_MULTIPLIER = 0.1;
+
 const DEFAULT_CAMERA = {
   id: 0,
   width: 1920,
@@ -193,6 +196,40 @@ export function ColmapVisualizer() {
     }
   }, [shaderRegistry]);
 
+  // 相机均值中心到最远相机的距离（有 Colmap 时用于缩放移动速度）
+  const magnitudeD = useMemo(() => {
+    try {
+      if (!colmapData?.images?.size || typeof colmapData.images.values !== 'function') return 0;
+      const positions = [];
+      for (const image of colmapData.images.values()) {
+        if (!image?.qvec || !image?.tvec) continue;
+        const camera = colmapData.cameras?.get?.(image.cameraId);
+        if (!camera) continue;
+        const p = cameraWorldPositionFromPose(image);
+        if (p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z)) {
+          positions.push([p.x, p.y, p.z]);
+        }
+      }
+      if (positions.length === 0) return 0;
+      const n = positions.length;
+      const mean = [
+        positions.reduce((s, p) => s + p[0], 0) / n,
+        positions.reduce((s, p) => s + p[1], 0) / n,
+        positions.reduce((s, p) => s + p[2], 0) / n,
+      ];
+      let maxDist = 0;
+      for (const p of positions) {
+        const d = Math.hypot(p[0] - mean[0], p[1] - mean[1], p[2] - mean[2]);
+        if (d > maxDist) maxDist = d;
+      }
+      return maxDist;
+    } catch (_) {
+      return 0;
+    }
+  }, [colmapData]);
+
+  const cameraSpeedMultiplier = magnitudeD > 0 ? _SPEED_MULTIPLIER * magnitudeD : 0.5;
+
   // Camera control: orbit vs FPS hook by store
   const isOrbitMode = cameraMode === 'orbit';
   
@@ -207,7 +244,7 @@ export function ColmapVisualizer() {
     0, // worldUpPitchAdjust
     null, // onNotifyUserInput
     false, // disableLeftMouseButton
-    0.5, // cameraSpeedMultiplier
+    cameraSpeedMultiplier, // 无 Colmap 时为 0.5，有 Colmap 时为 _SPEED_MULTIPLIER * magnitudeD
     !isOrbitMode
   );
   
@@ -222,7 +259,7 @@ export function ColmapVisualizer() {
     0, // worldUpPitchAdjust
     null, // onNotifyUserInput
     false, // disableLeftMouseButton
-    0.5, // cameraSpeedMultiplier
+    cameraSpeedMultiplier,
     15, // initialOrbitRadius
     0.6, // minOrbitRadius
     isOrbitMode
@@ -326,15 +363,23 @@ export function ColmapVisualizer() {
       pipeline.removeObject('camera-matches');
       if (matchedFrustumLinesObjRef.current?.positionBuffer) {
         gl.deleteBuffer(matchedFrustumLinesObjRef.current.positionBuffer);
+        matchedFrustumLinesObjRef.current.positionBuffer = null;
+        matchedFrustumLinesObjRef.current.ready = false;
       }
       if (matchesLinesObjRef.current?.positionBuffer) {
         gl.deleteBuffer(matchesLinesObjRef.current.positionBuffer);
+        matchesLinesObjRef.current.positionBuffer = null;
+        matchesLinesObjRef.current.ready = false;
       }
       if (pcObj.pointPositionBuffer) gl.deleteBuffer(pcObj.pointPositionBuffer);
       if (pcObj.pointColorBuffer) gl.deleteBuffer(pcObj.pointColorBuffer);
       if (selectedPcObj.pointPositionBuffer) gl.deleteBuffer(selectedPcObj.pointPositionBuffer);
       if (selectedPcObj.pointColorBuffer) gl.deleteBuffer(selectedPcObj.pointColorBuffer);
-      if (linesObj.positionBuffer) gl.deleteBuffer(linesObj.positionBuffer);
+      if (linesObj.positionBuffer) {
+        gl.deleteBuffer(linesObj.positionBuffer);
+        linesObj.positionBuffer = null;
+        linesObj.ready = false;
+      }
       pipeline.dispose();
       pipelineRef.current = null;
       renderTargetRef.current = null;

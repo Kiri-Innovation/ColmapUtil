@@ -316,10 +316,20 @@ export function InitiationPage({ children }) {
   const { isDragging, isDismissed, startDrag, stopDrag, dismiss } = useDragDropState();
   const { error, clearError } = useErrorToast();
   const [showInfoModal, setShowInfoModal] = useState(false);
-  const { loading, colmapData, extensionReceiving, extensionReceiveFailed } = useAppContext();
+  const { loading, colmapData, datasetEntries, extensionReceiving, extensionReceiveFailed } = useAppContext();
   const mobile = isMobile();
+  const hasDatasets = Array.isArray(datasetEntries) && datasetEntries.length > 0;
 
-  const shouldShowEmptyState = !colmapData && !loading && !isDragging && !isDismissed && !mobile && !extensionReceiving && !extensionReceiveFailed && !isExtensionPath();
+  const shouldShowEmptyState =
+    !colmapData &&
+    !hasDatasets &&
+    !loading &&
+    !isDragging &&
+    !isDismissed &&
+    !mobile &&
+    !extensionReceiving &&
+    !extensionReceiveFailed &&
+    !isExtensionPath();
 
   // ESC 关闭：优先关「查看说明」弹窗，否则关 initiation 空状态
   useEffect(() => {

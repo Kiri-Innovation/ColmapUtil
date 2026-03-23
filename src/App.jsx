@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Info } from 'lucide-react';
+import { Info, Trash2 } from 'lucide-react';
 import { InitiationPage } from './components/initiation-page/InitiationPage';
 import { ColmapVisualizer } from './components/visualizer/ColmapVisualizer';
 import { ImageGallery } from './components/sidebar/ImageGallery';
@@ -11,6 +11,7 @@ import { AppProvider, useAppContext, useUI, useSelection, useT } from './AppCont
 import { LanguageSwitcher } from './components/common/LanguageSwitcher';
 import { isMobile } from './utils/isMobile.js';
 import { useExtensionModalUrl, navigateAwayFromExtension } from './utils/extensionModalUrl';
+import { handleFileDrop } from './components/initiation-page/fileDropHandler.js';
 import './App.css';
 import './styles/design-system.css';
 
@@ -199,7 +200,9 @@ function MobileMessage() {
 
 /** Sidebar top tabs: gallery | datasets (placeholder until Datasets UI is implemented). */
 function SidebarDatasetsPlaceholder() {
-  const { datasetEntries, activeDatasetEntryId } = useAppContext();
+  const context = useAppContext();
+  const { datasetEntries, activeDatasetEntryId } = context;
+  const { toggleDatasetVisualization, removeDataset } = handleFileDrop(context);
   const t = useT();
   return (
     <div className="sidebar-datasets-placeholder">
@@ -211,11 +214,27 @@ function SidebarDatasetsPlaceholder() {
           {datasetEntries.map((entry) => (
             <div
               key={entry.id}
-              className={`sidebar-datasets-item${entry.id === activeDatasetEntryId ? ' active' : ''}`}
+              className={`sidebar-datasets-item${entry.visualized ? ' active' : ''}${entry.id === activeDatasetEntryId ? ' focus' : ''}`}
               title={entry.colmapDirectoryPath ?? ''}
+              onClick={() => toggleDatasetVisualization(entry.id)}
             >
               <span className="sidebar-datasets-name">{entry.folderName}</span>
-              {!entry.hasColmap && <span className="sidebar-datasets-badge">No COLMAP</span>}
+              <div className="sidebar-datasets-actions">
+                {!entry.hasColmap && <span className="sidebar-datasets-badge">No COLMAP</span>}
+                <button
+                  type="button"
+                  className="sidebar-datasets-delete"
+                  title="Delete dataset"
+                  aria-label="Delete dataset"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    removeDataset(entry.id);
+                  }}
+                >
+                  <Trash2 className="sidebar-datasets-delete-icon" />
+                </button>
+              </div>
             </div>
           ))}
         </div>

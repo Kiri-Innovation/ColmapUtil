@@ -181,13 +181,16 @@ export function handleFileDrop(context) {
     };
   }
 
-  function makeDatasetEntry(id, folderName, chosen, active = false) {
+  function makeDatasetEntry(id, folderName, chosen, active = false, source = null, visualized = false, parsedBundle = null) {
     const hasColmap = !!(chosen?.camerasFile && chosen?.imagesFile && chosen?.points3DFile);
     return {
       id,
       folderName,
       hasColmap,
       colmapDirectoryPath: chosen?.directoryPath ?? null,
+      source,
+      visualized,
+      parsedBundle,
       active,
     };
   }
@@ -196,15 +199,416 @@ export function handleFileDrop(context) {
     return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
   }
 
-  function appendDatasets(newEntries, keepActiveId) {
+  async function upsertDatasetsByFolderName(newEntries, keepActiveId) {
     if (!newEntries.length) return;
-    setDatasetEntries((prev) => {
-      const merged = [...prev, ...newEntries];
-      return merged.map((entry) => ({ ...entry, active: entry.id === keepActiveId }));
-    });
-    if (keepActiveId) {
-      setActiveDatasetEntryId(keepActiveId);
+    const current = Array.isArray(datasetEntries) ? datasetEntries : [];
+    const next = [...current];
+    let shouldRebuild = false;
+
+    for (const incoming of newEntries) {
+      const replaceIdx = next.findIndex((e) => e.folderName === incoming.folderName);
+      if (replaceIdx === -1) {
+        next.push({ ...incoming, active: false });
+        continue;
+      }
+
+      const oldEntry = next[replaceIdx];
+      const replacingVisualized = !!oldEntry.visualized;
+      const replaced = {
+        ...incoming,
+        id: oldEntry.id,
+        active: oldEntry.active,
+        visualized: replacingVisualized && incoming.hasColmap,
+        parsedBundle: null,
+      };
+
+      if (replacingVisualized && incoming.hasColmap) {
+        replaced.parsedBundle = await parseDatasetEntry(replaced);
+        shouldRebuild = true;
+      } else if (replacingVisualized && !incoming.hasColmap) {
+        shouldRebuild = true;
+      }
+
+      next[replaceIdx] = replaced;
     }
+
+    const effectiveActiveId =
+      keepActiveId && next.some((e) => e.id === keepActiveId)
+        ? keepActiveId
+        : (next.find((e) => e.active)?.id ?? next[0]?.id ?? null);
+    const normalized = next.map((entry) => ({ ...entry, active: entry.id === effectiveActiveId }));
+
+    setDatasetEntries(normalized);
+    setActiveDatasetEntryId(effectiveActiveId);
+
+    if (shouldRebuild) {
+      rebuildVisualizationFromEntries(normalized);
+    }
+  }
+
+  function cloneImagesWithPointRemap(images, cameraIdMap, pointIdMap, imageIdMap, datasetPrefix) {
+    const out = new Map();
+    for (const image of images.values()) {
+      const newImageId = imageIdMap.get(image.imageId);
+      if (newImageId == null) continue;
+      const newCameraId = cameraIdMap.get(image.cameraId);
+      if (newCameraId == null) continue;
+      const points2D = (image.points2D || []).map((p) => {
+        const oldPointId = p.point3DId;
+        let point3DId = BigInt(-1);
+        if (oldPointId !== BigInt(-1) && pointIdMap.has(oldPointId)) {
+          point3DId = pointIdMap.get(oldPointId);
+        }
+        return {
+          ...p,
+          point3DId,
+        };
+      });
+      out.set(newImageId, {
+        ...image,
+        imageId: newImageId,
+        cameraId: newCameraId,
+        name: `${datasetPrefix}/${image.name}`,
+        points2D,
+      });
+    }
+    return out;
+  }
+
+  function clonePointCloudWithRemap(pointCloud, pointIdMap, imageIdMap) {
+    const out = new Map();
+    if (!pointCloud) return out;
+    for (const point of pointCloud.values()) {
+      const newPointId = pointIdMap.get(point.point3DId);
+      if (newPointId == null) continue;
+      const track = (point.track || [])
+        .map((obs) => {
+          const mapped = imageIdMap.get(obs.imageId);
+          if (mapped == null) return null;
+          return {
+            ...obs,
+            imageId: mapped,
+          };
+        })
+        .filter(Boolean);
+      out.set(newPointId, {
+        ...point,
+        point3DId: newPointId,
+        track,
+      });
+    }
+    return out;
+  }
+
+  function buildMergedResolver(visibleEntries) {
+    const resolvers = [];
+    for (const entry of visibleEntries) {
+      const resolver = entry?.parsedBundle?.loadedFiles?.imageResolver;
+      if (!resolver) continue;
+      resolvers.push({ prefix: `${entry.id}/`, resolver });
+    }
+    return {
+      getImage(name) {
+        const norm = String(name || '').replace(/\\/g, '/');
+        for (const item of resolvers) {
+          if (!norm.startsWith(item.prefix)) continue;
+          const localName = norm.slice(item.prefix.length);
+          return item.resolver.getImage(localName);
+        }
+        return undefined;
+      },
+      getMask(name) {
+        const norm = String(name || '').replace(/\\/g, '/');
+        for (const item of resolvers) {
+          if (!norm.startsWith(item.prefix)) continue;
+          const localName = norm.slice(item.prefix.length);
+          return item.resolver.getMask(localName);
+        }
+        return undefined;
+      },
+      hasMasks() {
+        return resolvers.some((r) => r.resolver.hasMasks?.());
+      },
+      findMissing(images) {
+        const missing = [];
+        for (const img of images.values()) {
+          if (!this.getImage(img.name)) {
+            missing.push({ imageId: img.imageId, name: img.name });
+          }
+        }
+        return { missingImages: missing, totalImages: images.size, totalFiles: 0 };
+      },
+    };
+  }
+
+  function rebuildVisualizationFromEntries(entries) {
+    const visible = entries.filter((e) => e.visualized && e.parsedBundle?.colmapData);
+    if (visible.length === 0) {
+      setColmapData(null);
+      setLoadedFiles(null);
+      closeImageDetail();
+      setSelectedImageId(null);
+      return;
+    }
+
+    const mergedCameras = new Map();
+    const mergedImages = new Map();
+    const mergedPointCloud = new Map();
+
+    let nextCameraId = 1;
+    let nextImageId = 1;
+    let nextPointId = BigInt(1);
+
+    for (const entry of visible) {
+      const data = entry.parsedBundle.colmapData;
+      const cameraIdMap = new Map();
+      const imageIdMap = new Map();
+      const pointIdMap = new Map();
+
+      for (const cam of data.cameras.values()) {
+        const newId = nextCameraId++;
+        cameraIdMap.set(cam.cameraId, newId);
+        mergedCameras.set(newId, { ...cam, cameraId: newId });
+      }
+
+      for (const img of data.images.values()) {
+        const newId = nextImageId++;
+        imageIdMap.set(img.imageId, newId);
+      }
+
+      const pointCloud = data.pointCloud || new Map();
+      for (const pt of pointCloud.values()) {
+        const newPointId = nextPointId;
+        nextPointId += BigInt(1);
+        pointIdMap.set(pt.point3DId, newPointId);
+      }
+
+      const remappedImages = cloneImagesWithPointRemap(
+        data.images,
+        cameraIdMap,
+        pointIdMap,
+        imageIdMap,
+        entry.id
+      );
+      const remappedPoints = clonePointCloudWithRemap(pointCloud, pointIdMap, imageIdMap);
+
+      for (const [id, img] of remappedImages) mergedImages.set(id, img);
+      for (const [id, pt] of remappedPoints) mergedPointCloud.set(id, pt);
+    }
+
+    const statsResult = computeImageStats(mergedImages, mergedPointCloud);
+    let pointCloudAverageError = 0;
+    if (mergedPointCloud.size > 0) {
+      let sum = 0;
+      let cnt = 0;
+      for (const pt of mergedPointCloud.values()) {
+        if (pt.error >= 0) {
+          sum += pt.error;
+          cnt++;
+        }
+      }
+      pointCloudAverageError = cnt > 0 ? sum / cnt : 0;
+    }
+
+    const colmapDataMerged = {
+      cameras: mergedCameras,
+      images: mergedImages,
+      ...(mergedPointCloud.size > 0 && { pointCloud: mergedPointCloud }),
+      pointCloudPointCount: mergedPointCloud.size,
+      pointCloudTotalObservations: statsResult.pointCloudTotalObservations,
+      pointCloudAverageError,
+      imageNumPoints3D: statsResult.imageNumPoints3D,
+      imageAvgError: statsResult.imageAvgError,
+      imageCovisibleCount: statsResult.imageCovisibleCount,
+      imagePairCovisibilityCount: statsResult.imagePairCovisibilityCount,
+      pointCloudIdsByImage: statsResult.pointCloudIdsByImage,
+    };
+
+    const mergedResolver = buildMergedResolver(visible);
+    setLoadedFiles({ imageResolver: mergedResolver });
+    setColmapData(colmapDataMerged);
+    const scale = deriveFrustumDisplayScale(mergedImages);
+    setCameraScale(scale);
+    resetView();
+  }
+
+  async function parseDatasetEntry(entry) {
+    if (entry.parsedBundle) return entry.parsedBundle;
+    if (!entry.hasColmap || !entry.source) return null;
+
+    let files = null;
+    if (entry.source.type === 'zip') {
+      const zipFile = entry.source.zipFile;
+      if (!zipFile) return null;
+      const { sparseFiles, imageSource } = await loadColmapFromZip(zipFile);
+      files = sparseFiles;
+      const chosen = pickColmapDirectory(files);
+      const parsedBundle = await parseChosenFiles(files, chosen, imageSource);
+      return parsedBundle;
+    }
+
+    files = entry.source.files;
+    const chosen = entry.source.chosen || pickColmapDirectory(files);
+    const parsedBundle = await parseChosenFiles(files, chosen, null);
+    return parsedBundle;
+  }
+
+  async function parseChosenFiles(files, chosen, zipImageSource = null) {
+    if (!chosen?.camerasFile || !chosen?.imagesFile || !chosen?.points3DFile) {
+      throw new Error('Missing required COLMAP files. Need cameras, images, points3D (.bin or .txt)');
+    }
+
+    let folderResolver = null;
+    let loadedFilesObj = null;
+    if (zipImageSource) {
+      loadedFilesObj = {
+        camerasFile: chosen.camerasFile,
+        imagesFile: chosen.imagesFile,
+        points3DFile: chosen.points3DFile,
+        databaseFile: chosen.databaseFile,
+        rigsFile: chosen.rigsFile,
+        framesFile: chosen.framesFile,
+        imageSource: zipImageSource,
+      };
+    } else {
+      folderResolver = makeFolderImageResolver(files);
+      loadedFilesObj = {
+        camerasFile: chosen.camerasFile,
+        imagesFile: chosen.imagesFile,
+        points3DFile: chosen.points3DFile,
+        databaseFile: chosen.databaseFile,
+        rigsFile: chosen.rigsFile,
+        framesFile: chosen.framesFile,
+        imageResolver: folderResolver,
+      };
+    }
+
+    const [cameras, images, points3D] = await Promise.all([
+      chosen.camerasFile.name.endsWith('.bin')
+        ? chosen.camerasFile.arrayBuffer().then(parseCamerasBinary)
+        : chosen.camerasFile.text().then(parseCamerasText),
+      chosen.imagesFile.name.endsWith('.bin')
+        ? chosen.imagesFile.arrayBuffer().then((buf) => parseImagesBinary(buf, false))
+        : chosen.imagesFile.text().then(parseImagesText),
+      chosen.points3DFile.name.endsWith('.bin')
+        ? chosen.points3DFile.arrayBuffer().then(parsePoints3DBinary)
+        : chosen.points3DFile.text().then(parsePoints3DText),
+    ]);
+
+    const statsResult = computeImageStats(images, points3D);
+    let rigData;
+    if (chosen.rigsFile && chosen.framesFile) {
+      try {
+        const [rigs, frames] = await Promise.all([
+          chosen.rigsFile.name.endsWith('.bin')
+            ? chosen.rigsFile.arrayBuffer().then(parseRigsBinary)
+            : chosen.rigsFile.text().then(parseRigsText),
+          chosen.framesFile.name.endsWith('.bin')
+            ? chosen.framesFile.arrayBuffer().then(parseFramesBinary)
+            : chosen.framesFile.text().then(parseFramesText),
+        ]);
+        rigData = { rigs, frames };
+      } catch (err) {
+        console.warn('Parse rig/frame failed:', err);
+      }
+    }
+
+    const pointCloud = points3D || null;
+    let pointCloudAverageError = 0;
+    if (pointCloud && pointCloud.size > 0) {
+      let sum = 0;
+      let cnt = 0;
+      for (const pt of pointCloud.values()) {
+        if (pt.error >= 0) {
+          sum += pt.error;
+          cnt++;
+        }
+      }
+      pointCloudAverageError = cnt > 0 ? sum / cnt : 0;
+    }
+
+    const colmapDataParsed = {
+      cameras,
+      images,
+      ...(pointCloud && pointCloud.size > 0 && { pointCloud }),
+      rigData,
+      pointCloudPointCount: pointCloud?.size ?? 0,
+      pointCloudTotalObservations: statsResult.pointCloudTotalObservations,
+      pointCloudAverageError,
+      imageNumPoints3D: statsResult.imageNumPoints3D,
+      imageAvgError: statsResult.imageAvgError,
+      imageCovisibleCount: statsResult.imageCovisibleCount,
+      imagePairCovisibilityCount: statsResult.imagePairCovisibilityCount,
+      pointCloudIdsByImage: statsResult.pointCloudIdsByImage,
+    };
+
+    return { colmapData: colmapDataParsed, loadedFiles: loadedFilesObj };
+  }
+
+  async function toggleDatasetVisualization(datasetId) {
+    const currentEntries = datasetEntries || [];
+    const target = currentEntries.find((e) => e.id === datasetId);
+    if (!target || !target.hasColmap) return;
+
+    setLoading(true);
+    try {
+      let parsedBundle = target.parsedBundle;
+      const shouldVisualize = !target.visualized;
+      if (shouldVisualize && !parsedBundle) {
+        parsedBundle = await parseDatasetEntry(target);
+      }
+
+      const nextEntries = currentEntries.map((entry) => {
+        if (entry.id !== datasetId) return entry;
+        return {
+          ...entry,
+          parsedBundle: parsedBundle ?? entry.parsedBundle,
+          visualized: shouldVisualize,
+          active: entry.id === datasetId,
+        };
+      }).map((entry) => ({ ...entry, active: entry.id === datasetId }));
+
+      setDatasetEntries(nextEntries);
+      setActiveDatasetEntryId(datasetId);
+      rebuildVisualizationFromEntries(nextEntries);
+    } catch (err) {
+      console.error('Toggle dataset failed:', err);
+      setError(err instanceof Error ? err.message : 'Toggle dataset failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function removeDataset(datasetId) {
+    const currentEntries = Array.isArray(datasetEntries) ? datasetEntries : [];
+    const target = currentEntries.find((e) => e.id === datasetId);
+    if (!target) return;
+
+    // Release ZIP reader/cache if this dataset has one.
+    try {
+      target?.parsedBundle?.loadedFiles?.imageSource?.dispose?.();
+    } catch (err) {
+      console.warn('Dispose dataset image source failed:', err);
+    }
+
+    const remaining = currentEntries.filter((e) => e.id !== datasetId);
+    if (remaining.length === 0) {
+      setDatasetEntries([]);
+      setActiveDatasetEntryId(null);
+      setLoadedFiles(null);
+      setColmapData(null);
+      closeImageDetail();
+      setSelectedImageId(null);
+      return;
+    }
+
+    const nextActiveId = remaining.some((e) => e.id === activeDatasetEntryId)
+      ? activeDatasetEntryId
+      : remaining[0].id;
+    const normalized = remaining.map((entry) => ({ ...entry, active: entry.id === nextActiveId }));
+    setDatasetEntries(normalized);
+    setActiveDatasetEntryId(nextActiveId);
+    rebuildVisualizationFromEntries(normalized);
   }
 
   async function processFilesWithSource(files, zipImageSource = null) {
@@ -361,15 +765,17 @@ export function handleFileDrop(context) {
       const datasetId = makeDatasetId('zip');
       const shouldKeepCurrentVisualization = !!(colmapData && activeDatasetEntryId);
       if (shouldKeepCurrentVisualization) {
-        appendDatasets(
+        await upsertDatasetsByFolderName(
           [
-            {
-              id: datasetId,
-              folderName: zipFile.name,
-              hasColmap: true,
-              colmapDirectoryPath: 'sparse/0',
-              active: false,
-            },
+            makeDatasetEntry(
+              datasetId,
+              zipFile.name,
+              { directoryPath: 'sparse/0', camerasFile: {}, imagesFile: {}, points3DFile: {} },
+              false,
+              { type: 'zip', zipFile },
+              false,
+              null
+            ),
           ],
           activeDatasetEntryId
         );
@@ -378,17 +784,19 @@ export function handleFileDrop(context) {
 
       const { sparseFiles, imageSource } = await loadColmapFromZip(zipFile);
       setSourceInfo('zip', null);
-      setDatasetEntries([
-        {
-          id: datasetId,
-          folderName: zipFile.name,
-          hasColmap: true,
-          colmapDirectoryPath: 'sparse/0',
-          active: true,
-        },
-      ]);
+      const parsedBundle = await parseChosenFiles(sparseFiles, pickColmapDirectory(sparseFiles), imageSource);
+      const zipEntry = makeDatasetEntry(
+        datasetId,
+        zipFile.name,
+        { directoryPath: 'sparse/0', camerasFile: {}, imagesFile: {}, points3DFile: {} },
+        true,
+        { type: 'zip', zipFile },
+        true,
+        parsedBundle
+      );
+      setDatasetEntries([zipEntry]);
       setActiveDatasetEntryId(datasetId);
-      await processFilesWithSource(sparseFiles, imageSource);
+      rebuildVisualizationFromEntries([zipEntry]);
     } catch (err) {
       console.error('[ZIP] Process failed:', err);
       setError(err instanceof Error ? err.message : 'ZIP process failed');
@@ -444,37 +852,60 @@ export function handleFileDrop(context) {
       const shouldKeepCurrentVisualization = !!(colmapData && activeDatasetEntryId);
       if (shouldKeepCurrentVisualization) {
         const datasetId = makeDatasetId('drop');
-        appendDatasets(
-          [makeDatasetEntry(datasetId, 'Dropped files', chosen, false)],
+        await upsertDatasetsByFolderName(
+          [makeDatasetEntry(datasetId, 'Dropped files', chosen, false, { type: 'local', files: fallbackMap, chosen }, false, null)],
           activeDatasetEntryId
         );
         return;
       }
 
       const datasetId = makeDatasetId('drop');
-      setDatasetEntries([makeDatasetEntry(datasetId, 'Dropped files', chosen, true)]);
+      const parsedBundle = await parseChosenFiles(fallbackMap, chosen, null);
+      const entry = makeDatasetEntry(
+        datasetId,
+        'Dropped files',
+        chosen,
+        true,
+        { type: 'local', files: fallbackMap, chosen },
+        true,
+        parsedBundle
+      );
+      setDatasetEntries([entry]);
       setActiveDatasetEntryId(datasetId);
-      await processFilesWithSource(fallbackMap);
+      rebuildVisualizationFromEntries([entry]);
       return;
     }
 
     const shouldKeepCurrentVisualization = !!(colmapData && activeDatasetEntryId);
     const datasetList = grouped.map((g, idx) => {
       const id = makeDatasetId(`drop${idx}`);
-      return makeDatasetEntry(id, g.name, g.chosen, !shouldKeepCurrentVisualization && idx === 0);
+      return makeDatasetEntry(
+        id,
+        g.name,
+        g.chosen,
+        !shouldKeepCurrentVisualization && idx === 0,
+        { type: 'local', files: g.files, chosen: g.chosen },
+        false,
+        null
+      );
     });
 
     if (shouldKeepCurrentVisualization) {
-      appendDatasets(datasetList, activeDatasetEntryId);
+      await upsertDatasetsByFolderName(datasetList, activeDatasetEntryId);
       return;
     }
 
-    setDatasetEntries(datasetList);
-    setActiveDatasetEntryId(datasetList[0]?.id ?? null);
-
-    const firstGroup = grouped[0];
-    if (!firstGroup) return;
-    await processFilesWithSource(firstGroup.files);
+    if (datasetList.length === 0) return;
+    const firstEntry = datasetList[0];
+    const parsedBundle = await parseDatasetEntry(firstEntry);
+    const withParsed = datasetList.map((entry, idx) =>
+      idx === 0
+        ? { ...entry, parsedBundle, visualized: true, active: true }
+        : entry
+    );
+    setDatasetEntries(withParsed);
+    setActiveDatasetEntryId(firstEntry.id);
+    rebuildVisualizationFromEntries(withParsed);
   }
 
   function handleDragOver(e) {
@@ -518,5 +949,7 @@ export function handleFileDrop(context) {
     processFiles: processFilesWithSource,
     processZipFile,
     handleBrowse,
+    toggleDatasetVisualization,
+    removeDataset,
   };
 }

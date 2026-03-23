@@ -288,11 +288,23 @@ html, body, #root {
   border-bottom: 1px solid var(--border-primary);
   color: var(--text-secondary);
   background-color: transparent;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.sidebar-datasets-item:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .sidebar-datasets-item.active {
   background-color: var(--bg-tertiary);
   color: var(--text-primary);
+}
+
+.sidebar-datasets-item.focus {
+  outline: 1px solid var(--border-secondary);
+  outline-offset: -1px;
 }
 
 .sidebar-datasets-name {
@@ -305,6 +317,36 @@ html, body, #root {
   flex-shrink: 0;
   font-size: 10px;
   color: var(--warning);
+}
+
+.sidebar-datasets-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-datasets-delete {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.sidebar-datasets-delete:hover {
+  color: var(--error);
+  background-color: rgba(184, 107, 107, 0.18);
+}
+
+.sidebar-datasets-delete-icon {
+  width: 14px;
+  height: 14px;
 }
 
 /* 相机详情：视图 Tab 容器（2D点 / 3D点 / 点匹配） */

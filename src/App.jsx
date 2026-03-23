@@ -197,11 +197,40 @@ function MobileMessage() {
   );
 }
 
+/** Sidebar top tabs: gallery | datasets (placeholder until Datasets UI is implemented). */
+function SidebarDatasetsPlaceholder() {
+  const { datasetEntries, activeDatasetEntryId } = useAppContext();
+  const t = useT();
+  return (
+    <div className="sidebar-datasets-placeholder">
+      <div className="sidebar-datasets-title">Datasets</div>
+      {datasetEntries.length === 0 ? (
+        <div className="sidebar-datasets-empty">{t('dropHint')}</div>
+      ) : (
+        <div className="sidebar-datasets-list">
+          {datasetEntries.map((entry) => (
+            <div
+              key={entry.id}
+              className={`sidebar-datasets-item${entry.id === activeDatasetEntryId ? ' active' : ''}`}
+              title={entry.colmapDirectoryPath ?? ''}
+            >
+              <span className="sidebar-datasets-name">{entry.folderName}</span>
+              {!entry.hasColmap && <span className="sidebar-datasets-badge">No COLMAP</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MainLayout() {
   const [embedMode] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('embed') === '1' || params.get('embed') === 'true';
   });
+  // 'gallery' | 'datasets'
+  const [sidebarMode, setSidebarMode] = useState('gallery');
   const { imageDetailId, closeImageDetail } = useUI();
   const { panelWidth, handleMouseDown, isResizing } = useResizablePanel(DEFAULT_PANEL_WIDTH);
   const t = useT();
@@ -262,29 +291,38 @@ function MainLayout() {
             }}>
               <div className="sidebar-header">
                 <div className="sidebar-tabs">
-                  {showDetailPanel ? (
+                  {showDetailPanel && sidebarMode === 'gallery' && (
                     <button
-                      className="sidebar-tab active"
+                      type="button"
+                      className="sidebar-tab sidebar-tab-back"
                       onClick={closeImageDetail}
-                      style={{ cursor: 'pointer' }}
                     >
                       {t('back')}
                     </button>
-                  ) : (
-                    <button
-                      className="sidebar-tab active"
-                      style={{ cursor: 'default' }}
-                    >
-                      {t('imageGallery')}
-                    </button>
                   )}
+                  <button
+                    type="button"
+                    className={`sidebar-tab ${sidebarMode === 'gallery' ? 'active' : ''}`}
+                    onClick={() => setSidebarMode('gallery')}
+                  >
+                    {t('imageGallery')}
+                  </button>
+                  <button
+                    type="button"
+                    className={`sidebar-tab ${sidebarMode === 'datasets' ? 'active' : ''}`}
+                    onClick={() => setSidebarMode('datasets')}
+                  >
+                    {t('datasets')}
+                  </button>
                 </div>
               </div>
               <div
-                className="sidebar-content"
+                className={`sidebar-content${sidebarMode === 'datasets' ? ' sidebar-content--datasets' : ''}`}
                 onWheel={(e) => e.stopPropagation()}
               >
-                {showDetailPanel ? (
+                {sidebarMode === 'datasets' ? (
+                  <SidebarDatasetsPlaceholder />
+                ) : showDetailPanel ? (
                   <ImageDetailPanel />
                 ) : (
                   <ImageGallery isResizing={isResizing} />

@@ -68,9 +68,14 @@ function deriveFrustumDisplayScale(images) {
  */
 export function handleFileDrop(context) {
   const {
+    colmapData,
+    datasetEntries,
+    activeDatasetEntryId,
     setColmapData,
     setLoadedFiles,
     setDroppedFiles,
+    setDatasetEntries,
+    setActiveDatasetEntryId,
     setLoading,
     setError,
     setSourceInfo,
@@ -166,6 +171,7 @@ export function handleFileDrop(context) {
     });
     const chosen = candidates[0].bag;
     return {
+      directoryPath: candidates[0].dir,
       camerasFile: chosen.cameras,
       imagesFile: chosen.images,
       points3DFile: chosen.points3D,
@@ -173,6 +179,32 @@ export function handleFileDrop(context) {
       rigsFile: chosen.rigs,
       framesFile: chosen.frames,
     };
+  }
+
+  function makeDatasetEntry(id, folderName, chosen, active = false) {
+    const hasColmap = !!(chosen?.camerasFile && chosen?.imagesFile && chosen?.points3DFile);
+    return {
+      id,
+      folderName,
+      hasColmap,
+      colmapDirectoryPath: chosen?.directoryPath ?? null,
+      active,
+    };
+  }
+
+  function makeDatasetId(prefix) {
+    return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function appendDatasets(newEntries, keepActiveId) {
+    if (!newEntries.length) return;
+    setDatasetEntries((prev) => {
+      const merged = [...prev, ...newEntries];
+      return merged.map((entry) => ({ ...entry, active: entry.id === keepActiveId }));
+    });
+    if (keepActiveId) {
+      setActiveDatasetEntryId(keepActiveId);
+    }
   }
 
   async function processFilesWithSource(files, zipImageSource = null) {
@@ -326,8 +358,36 @@ export function handleFileDrop(context) {
   async function processZipFile(zipFile) {
     setLoading(true);
     try {
+      const datasetId = makeDatasetId('zip');
+      const shouldKeepCurrentVisualization = !!(colmapData && activeDatasetEntryId);
+      if (shouldKeepCurrentVisualization) {
+        appendDatasets(
+          [
+            {
+              id: datasetId,
+              folderName: zipFile.name,
+              hasColmap: true,
+              colmapDirectoryPath: 'sparse/0',
+              active: false,
+            },
+          ],
+          activeDatasetEntryId
+        );
+        return;
+      }
+
       const { sparseFiles, imageSource } = await loadColmapFromZip(zipFile);
       setSourceInfo('zip', null);
+      setDatasetEntries([
+        {
+          id: datasetId,
+          folderName: zipFile.name,
+          hasColmap: true,
+          colmapDirectoryPath: 'sparse/0',
+          active: true,
+        },
+      ]);
+      setActiveDatasetEntryId(datasetId);
       await processFilesWithSource(sparseFiles, imageSource);
     } catch (err) {
       console.error('[ZIP] Process failed:', err);
@@ -359,7 +419,6 @@ export function handleFileDrop(context) {
       }
     }
 
-    const fileMap = new Map();
     const entries = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -368,18 +427,54 @@ export function handleFileDrop(context) {
       if (ent) entries.push(ent);
     }
 
+    const grouped = [];
     for (const ent of entries) {
-      await collectFilesFromEntry(ent, '', fileMap);
+      const groupMap = new Map();
+      await collectFilesFromEntry(ent, '', groupMap);
+      grouped.push({ name: ent.name, files: groupMap, chosen: pickColmapDirectory(groupMap) });
     }
 
-    if (fileMap.size === 0 && e.dataTransfer.files.length > 0) {
+    if (grouped.length === 0 && e.dataTransfer.files.length > 0) {
+      const fallbackMap = new Map();
       for (let i = 0; i < e.dataTransfer.files.length; i++) {
         const f = e.dataTransfer.files[i];
-        fileMap.set(f.name, f);
+        fallbackMap.set(f.name, f);
       }
+      const chosen = pickColmapDirectory(fallbackMap);
+      const shouldKeepCurrentVisualization = !!(colmapData && activeDatasetEntryId);
+      if (shouldKeepCurrentVisualization) {
+        const datasetId = makeDatasetId('drop');
+        appendDatasets(
+          [makeDatasetEntry(datasetId, 'Dropped files', chosen, false)],
+          activeDatasetEntryId
+        );
+        return;
+      }
+
+      const datasetId = makeDatasetId('drop');
+      setDatasetEntries([makeDatasetEntry(datasetId, 'Dropped files', chosen, true)]);
+      setActiveDatasetEntryId(datasetId);
+      await processFilesWithSource(fallbackMap);
+      return;
     }
 
-    await processFilesWithSource(fileMap);
+    const shouldKeepCurrentVisualization = !!(colmapData && activeDatasetEntryId);
+    const datasetList = grouped.map((g, idx) => {
+      const id = makeDatasetId(`drop${idx}`);
+      return makeDatasetEntry(id, g.name, g.chosen, !shouldKeepCurrentVisualization && idx === 0);
+    });
+
+    if (shouldKeepCurrentVisualization) {
+      appendDatasets(datasetList, activeDatasetEntryId);
+      return;
+    }
+
+    setDatasetEntries(datasetList);
+    setActiveDatasetEntryId(datasetList[0]?.id ?? null);
+
+    const firstGroup = grouped[0];
+    if (!firstGroup) return;
+    await processFilesWithSource(firstGroup.files);
   }
 
   function handleDragOver(e) {

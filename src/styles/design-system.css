@@ -234,6 +234,77 @@ html, body, #root {
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
+  min-height: 0;
+}
+
+/* Datasets tab: single child fills panel (solid placeholder) */
+.sidebar-content--datasets {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-tab-back {
+  min-width: auto;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.sidebar-datasets-placeholder {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background-color: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-datasets-title {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
+
+.sidebar-datasets-empty {
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.sidebar-datasets-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sidebar-datasets-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  background-color: transparent;
+}
+
+.sidebar-datasets-item.active {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.sidebar-datasets-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-datasets-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--warning);
 }
 
 /* 相机详情：视图 Tab 容器（2D点 / 3D点 / 点匹配） */

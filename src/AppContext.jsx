@@ -66,6 +66,8 @@ export function AppProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [sourceType, setSourceTypeState] = useState(null);
+  const [datasetEntries, setDatasetEntries] = useState([]);
+  const [activeDatasetEntryId, setActiveDatasetEntryId] = useState(null);
   const [extensionReceiving, setExtensionReceiving] = useState(false);
   const [extensionReceiveFailed, setExtensionReceiveFailed] = useState(false);
 
@@ -95,6 +97,8 @@ export function AppProvider({ children }) {
     setError(null);
     setLoading(false);
     setSourceTypeState(null);
+    setDatasetEntries([]);
+    setActiveDatasetEntryId(null);
     setExtensionReceiveFailed(false);
   }, []);
 
@@ -268,6 +272,8 @@ export function AppProvider({ children }) {
       loading,
       error,
       sourceType,
+      datasetEntries,
+      activeDatasetEntryId,
       sourceTypeRef,
       extensionReceiving,
       setExtensionReceiving,
@@ -279,6 +285,8 @@ export function AppProvider({ children }) {
       setLoading,
       setError,
       setSourceInfo,
+      setDatasetEntries,
+      setActiveDatasetEntryId,
       clear: clearColmapData,
       pointCount,
       imageCount,
@@ -341,6 +349,8 @@ export function AppProvider({ children }) {
       loading,
       error,
       sourceType,
+      datasetEntries,
+      activeDatasetEntryId,
       extensionReceiving,
       setExtensionReceiving,
       extensionReceiveFailed,
@@ -351,6 +361,8 @@ export function AppProvider({ children }) {
       setLoading,
       setError,
       setSourceInfo,
+      setDatasetEntries,
+      setActiveDatasetEntryId,
       clearColmapData,
       pointCount,
       imageCount,

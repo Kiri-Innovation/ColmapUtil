@@ -30,6 +30,7 @@ export const T = {
   // Sidebar
   back: { en: '← Back', zh: '← 返回' },
   imageGallery: { en: 'Image Gallery', zh: '图像画廊' },
+  datasets: { en: 'Datasets', zh: '数据集' },
 
   // Initiation page
   importTitle: { en: 'Import COLMAP Data', zh: '导入 COLMAP 数据' },

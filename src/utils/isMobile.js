@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BREAKPOINT_MOBILE } from '../config.js';
 
 /**
@@ -35,14 +35,43 @@ export function isMobile() {
 }
 
 /**
- * 与 isMobile() 相同逻辑，但在窗口尺寸变化时重新计算（触摸笔记本窄窗拉宽后应恢复主界面）。
+ * 与 isMobile() 相同逻辑，但在视口尺寸变化时重新计算。
+ * 在 VS Code/Cursor Webview 的内层 iframe 里，仅 window resize 往往不会在拖窄/拖宽侧栏时触发；
+ * 需配合 ResizeObserver、visualViewport、matchMedia。
  */
 export function useIsMobile() {
   const [, setResizeTick] = useState(0);
+  const bump = useCallback(() => setResizeTick((n) => n + 1), []);
+
   useEffect(() => {
-    const onResize = () => setResizeTick((n) => n + 1);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
+    window.addEventListener('resize', bump);
+
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', bump);
+      vv.addEventListener('scroll', bump);
+    }
+
+    const mq = window.matchMedia(`(max-width: ${BREAKPOINT_MOBILE - 1}px)`);
+    const onMq = () => bump();
+    mq.addEventListener('change', onMq);
+
+    let ro;
+    if (typeof ResizeObserver !== 'undefined' && document.documentElement) {
+      ro = new ResizeObserver(() => bump());
+      ro.observe(document.documentElement);
+    }
+
+    return () => {
+      window.removeEventListener('resize', bump);
+      if (vv) {
+        vv.removeEventListener('resize', bump);
+        vv.removeEventListener('scroll', bump);
+      }
+      mq.removeEventListener('change', onMq);
+      ro?.disconnect();
+    };
+  }, [bump]);
+
   return isMobile();
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Info, Trash2 } from 'lucide-react';
+import { Info, Pencil, Trash2 } from 'lucide-react';
 import { InitiationPage } from './components/initiation-page/InitiationPage';
 import { ColmapVisualizer } from './components/visualizer/ColmapVisualizer';
 import { ImageGallery } from './components/sidebar/ImageGallery';
@@ -202,8 +202,38 @@ function MobileMessage() {
 function SidebarDatasetsPlaceholder() {
   const context = useAppContext();
   const { datasetEntries, activeDatasetEntryId } = context;
-  const { toggleDatasetVisualization, removeDataset } = handleFileDrop(context);
+  const { toggleDatasetVisualization, renameDatasetDisplayName, removeDataset } = handleFileDrop(context);
   const t = useT();
+  const [editingId, setEditingId] = useState(null);
+  const [draftName, setDraftName] = useState('');
+  const renameInputRef = useRef(null);
+
+  useEffect(() => {
+    if (editingId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [editingId]);
+
+  function commitRename(entryId) {
+    const entry = datasetEntries.find((e) => e.id === entryId);
+    const prev = entry?.folderName ?? '';
+    const next = draftName.trim();
+    if (!next) {
+      setDraftName(prev);
+      setEditingId(null);
+      return;
+    }
+    renameDatasetDisplayName(entryId, draftName);
+    setEditingId(null);
+  }
+
+  function cancelRename(entryId) {
+    const entry = datasetEntries.find((e) => e.id === entryId);
+    setDraftName(entry?.folderName ?? '');
+    setEditingId(null);
+  }
+
   return (
     <div className="sidebar-datasets-placeholder">
       <div className="sidebar-datasets-title">Datasets</div>
@@ -214,13 +244,56 @@ function SidebarDatasetsPlaceholder() {
           {datasetEntries.map((entry) => (
             <div
               key={entry.id}
-              className={`sidebar-datasets-item${entry.visualized ? ' active' : ''}${entry.id === activeDatasetEntryId ? ' focus' : ''}`}
+              className={`sidebar-datasets-item${entry.visualized ? ' active' : ''}${entry.id === activeDatasetEntryId ? ' focus' : ''}${editingId === entry.id ? ' editing' : ''}`}
               title={entry.colmapDirectoryPath ?? ''}
-              onClick={() => toggleDatasetVisualization(entry.id)}
+              onClick={() => {
+                if (editingId === entry.id) return;
+                toggleDatasetVisualization(entry.id);
+              }}
             >
-              <span className="sidebar-datasets-name">{entry.folderName}</span>
+              {editingId === entry.id ? (
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  className="sidebar-datasets-rename-input"
+                  value={draftName}
+                  aria-label="Dataset display name"
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      commitRename(entry.id);
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      cancelRename(entry.id);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (editingId === entry.id) commitRename(entry.id);
+                  }}
+                />
+              ) : (
+                <span className="sidebar-datasets-name">{entry.folderName}</span>
+              )}
               <div className="sidebar-datasets-actions">
                 {!entry.hasColmap && <span className="sidebar-datasets-badge">No COLMAP</span>}
+                {editingId !== entry.id && (
+                  <button
+                    type="button"
+                    className="sidebar-datasets-edit"
+                    title="Rename"
+                    aria-label="Rename dataset"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setEditingId(entry.id);
+                      setDraftName(entry.folderName);
+                    }}
+                  >
+                    <Pencil className="sidebar-datasets-edit-icon" />
+                  </button>
+                )}
                 <button
                   type="button"
                   className="sidebar-datasets-delete"
@@ -229,6 +302,7 @@ function SidebarDatasetsPlaceholder() {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (editingId === entry.id) setEditingId(null);
                     removeDataset(entry.id);
                   }}
                 >

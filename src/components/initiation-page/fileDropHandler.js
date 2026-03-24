@@ -199,51 +199,47 @@ export function handleFileDrop(context) {
     return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
   }
 
-  async function upsertDatasetsByFolderName(newEntries, keepActiveId) {
+  /** Insert _n before extension for files like foo.zip → foo_1.zip; folders use foo_1. */
+  function displayNameWithNumericSuffix(baseName, n) {
+    if (n === 0) return baseName;
+    const dot = baseName.lastIndexOf('.');
+    if (dot > 0 && dot < baseName.length - 1) {
+      return `${baseName.slice(0, dot)}_${n}${baseName.slice(dot)}`;
+    }
+    return `${baseName}_${n}`;
+  }
+
+  /** Assign a unique sidebar label against existing + in-batch names. */
+  function allocateUniqueDisplayName(baseName, usedNames) {
+    if (!usedNames.has(baseName)) {
+      usedNames.add(baseName);
+      return baseName;
+    }
+    let n = 1;
+    while (true) {
+      const candidate = displayNameWithNumericSuffix(baseName, n);
+      if (!usedNames.has(candidate)) {
+        usedNames.add(candidate);
+        return candidate;
+      }
+      n += 1;
+    }
+  }
+
+  /** Append new datasets without replacing; duplicate base names get _1, _2, … */
+  function appendDatasetsWithUniqueDisplayNames(newEntries, keepActiveId) {
     if (!newEntries.length) return;
     const current = Array.isArray(datasetEntries) ? datasetEntries : [];
-    const next = [...current];
-    let shouldRebuild = false;
-
-    for (const incoming of newEntries) {
-      const replaceIdx = next.findIndex((e) => e.folderName === incoming.folderName);
-      if (replaceIdx === -1) {
-        next.push({ ...incoming, active: false });
-        continue;
-      }
-
-      const oldEntry = next[replaceIdx];
-      const replacingVisualized = !!oldEntry.visualized;
-      const replaced = {
-        ...incoming,
-        id: oldEntry.id,
-        active: oldEntry.active,
-        visualized: replacingVisualized && incoming.hasColmap,
-        parsedBundle: null,
-      };
-
-      if (replacingVisualized && incoming.hasColmap) {
-        replaced.parsedBundle = await parseDatasetEntry(replaced);
-        shouldRebuild = true;
-      } else if (replacingVisualized && !incoming.hasColmap) {
-        shouldRebuild = true;
-      }
-
-      next[replaceIdx] = replaced;
-    }
-
-    const effectiveActiveId =
-      keepActiveId && next.some((e) => e.id === keepActiveId)
-        ? keepActiveId
-        : (next.find((e) => e.active)?.id ?? next[0]?.id ?? null);
-    const normalized = next.map((entry) => ({ ...entry, active: entry.id === effectiveActiveId }));
-
+    const usedNames = new Set(current.map((e) => e.folderName));
+    const withUnique = newEntries.map((entry) => {
+      const base = entry.folderName;
+      const uniqueName = allocateUniqueDisplayName(base, usedNames);
+      return { ...entry, folderName: uniqueName };
+    });
+    const merged = [...current, ...withUnique];
+    const normalized = merged.map((entry) => ({ ...entry, active: entry.id === keepActiveId }));
     setDatasetEntries(normalized);
-    setActiveDatasetEntryId(effectiveActiveId);
-
-    if (shouldRebuild) {
-      rebuildVisualizationFromEntries(normalized);
-    }
+    setActiveDatasetEntryId(keepActiveId);
   }
 
   function cloneImagesWithPointRemap(images, cameraIdMap, pointIdMap, imageIdMap, datasetPrefix) {
@@ -579,6 +575,27 @@ export function handleFileDrop(context) {
     }
   }
 
+  /** Update sidebar label; enforces uniqueness vs other entries (may add _1, _2, …). */
+  function renameDatasetDisplayName(datasetId, rawInput) {
+    const trimmed = (rawInput ?? '').trim();
+    if (!trimmed) return;
+
+    const current = Array.isArray(datasetEntries) ? datasetEntries : [];
+    const target = current.find((e) => e.id === datasetId);
+    if (!target) return;
+
+    const usedNames = new Set(
+      current.filter((e) => e.id !== datasetId).map((e) => e.folderName)
+    );
+    const uniqueName = allocateUniqueDisplayName(trimmed, usedNames);
+    if (uniqueName === target.folderName) return;
+
+    const next = current.map((e) =>
+      e.id === datasetId ? { ...e, folderName: uniqueName } : e
+    );
+    setDatasetEntries(next);
+  }
+
   function removeDataset(datasetId) {
     const currentEntries = Array.isArray(datasetEntries) ? datasetEntries : [];
     const target = currentEntries.find((e) => e.id === datasetId);
@@ -765,7 +782,7 @@ export function handleFileDrop(context) {
       const datasetId = makeDatasetId('zip');
       const shouldKeepCurrentVisualization = !!(colmapData && activeDatasetEntryId);
       if (shouldKeepCurrentVisualization) {
-        await upsertDatasetsByFolderName(
+        appendDatasetsWithUniqueDisplayNames(
           [
             makeDatasetEntry(
               datasetId,
@@ -852,7 +869,7 @@ export function handleFileDrop(context) {
       const shouldKeepCurrentVisualization = !!(colmapData && activeDatasetEntryId);
       if (shouldKeepCurrentVisualization) {
         const datasetId = makeDatasetId('drop');
-        await upsertDatasetsByFolderName(
+        appendDatasetsWithUniqueDisplayNames(
           [makeDatasetEntry(datasetId, 'Dropped files', chosen, false, { type: 'local', files: fallbackMap, chosen }, false, null)],
           activeDatasetEntryId
         );
@@ -877,11 +894,15 @@ export function handleFileDrop(context) {
     }
 
     const shouldKeepCurrentVisualization = !!(colmapData && activeDatasetEntryId);
+    const batchUsedNames = new Set();
     const datasetList = grouped.map((g, idx) => {
       const id = makeDatasetId(`drop${idx}`);
+      const label = shouldKeepCurrentVisualization
+        ? g.name
+        : allocateUniqueDisplayName(g.name, batchUsedNames);
       return makeDatasetEntry(
         id,
-        g.name,
+        label,
         g.chosen,
         !shouldKeepCurrentVisualization && idx === 0,
         { type: 'local', files: g.files, chosen: g.chosen },
@@ -891,7 +912,7 @@ export function handleFileDrop(context) {
     });
 
     if (shouldKeepCurrentVisualization) {
-      await upsertDatasetsByFolderName(datasetList, activeDatasetEntryId);
+      appendDatasetsWithUniqueDisplayNames(datasetList, activeDatasetEntryId);
       return;
     }
 
@@ -950,6 +971,7 @@ export function handleFileDrop(context) {
     processZipFile,
     handleBrowse,
     toggleDatasetVisualization,
+    renameDatasetDisplayName,
     removeDataset,
   };
 }

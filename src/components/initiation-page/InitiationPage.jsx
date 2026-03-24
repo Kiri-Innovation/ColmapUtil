@@ -81,11 +81,13 @@ function ExtensionZipListener({ context }) {
   const { setExtensionReceiving, setExtensionReceiveFailed } = context;
   const chunksRef = useRef({});
   const totalRef = useRef(0);
+  const extensionNoImageRef = useRef(false);
   useEffect(() => {
     const handler = (event) => {
       const d = event?.data;
       if (!d) return;
       if (d.type === 'colmaputil-handshake') {
+        extensionNoImageRef.current = !!d.noImage;
         setExtensionReceiveFailed(false);
         setExtensionReceiving(true);
         if (window.parent !== window) {
@@ -112,7 +114,7 @@ function ExtensionZipListener({ context }) {
           const arr = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
           const file = new File([new Blob([arr], { type: 'application/zip' })], 'colmap.zip', { type: 'application/zip' });
-          processZipFile(file)
+          processZipFile(file, { noImage: extensionNoImageRef.current })
             .catch(() => setExtensionReceiveFailed(true))
             .finally(() => setExtensionReceiving(false));
         } catch (err) {

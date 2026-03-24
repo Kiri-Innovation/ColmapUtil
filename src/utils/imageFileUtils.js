@@ -95,8 +95,14 @@ export function makeFolderImageResolver(files) {
 /** Sync: resolve image from loadedFiles (imageSource.getCached or imageResolver.getImage or imageFiles). */
 export function resolveImageFromLoaded(loadedFiles, imageName) {
   if (!loadedFiles || !imageName) return undefined;
-  if (loadedFiles.imageSource) return loadedFiles.imageSource.getCached(imageName);
-  if (loadedFiles.imageResolver) return loadedFiles.imageResolver.getImage(imageName);
+  if (loadedFiles.imageSource) {
+    const c = loadedFiles.imageSource.getCached(imageName);
+    if (c != null) return c;
+  }
+  if (loadedFiles.imageResolver) {
+    const f = loadedFiles.imageResolver.getImage(imageName);
+    if (f != null) return f;
+  }
   if (loadedFiles.imageFiles) {
     const norm = imageName.replace(/\\/g, '/');
     return loadedFiles.imageFiles.get(norm) ?? loadedFiles.imageFiles.get(norm.toLowerCase());
@@ -107,7 +113,10 @@ export function resolveImageFromLoaded(loadedFiles, imageName) {
 /** Async: resolve image from loadedFiles (imageSource.getImage or imageResolver/imageFiles). */
 export async function resolveImageFromLoadedAsync(loadedFiles, imageName) {
   if (!loadedFiles || !imageName) return null;
-  if (loadedFiles.imageSource) return loadedFiles.imageSource.getImage(imageName);
+  if (loadedFiles.imageSource) {
+    const c = await loadedFiles.imageSource.getImage(imageName);
+    if (c != null) return c;
+  }
   if (loadedFiles.imageResolver) {
     const f = loadedFiles.imageResolver.getImage(imageName);
     return f ? Promise.resolve(f) : Promise.resolve(null);
@@ -128,7 +137,10 @@ export function loadedFilesUseZip(loadedFiles) {
 /** Async: resolve mask from loadedFiles. */
 export async function resolveMaskFromLoadedAsync(loadedFiles, imageName) {
   if (!loadedFiles || !imageName) return null;
-  if (loadedFiles.imageSource) return loadedFiles.imageSource.getMask(imageName);
+  if (loadedFiles.imageSource) {
+    const m = await loadedFiles.imageSource.getMask(imageName);
+    if (m != null) return m;
+  }
   if (loadedFiles.imageResolver) {
     const f = loadedFiles.imageResolver.getMask(imageName);
     return f ? Promise.resolve(f) : Promise.resolve(null);

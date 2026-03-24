@@ -337,6 +337,55 @@ export function handleFileDrop(context) {
     };
   }
 
+  /** ZIP 使用 loadedFiles.imageSource；合并多数据集时必须带上，否则画廊/视锥无纹理。 */
+  function buildMergedZipImageSource(visibleEntries) {
+    const items = [];
+    for (const entry of visibleEntries) {
+      const src = entry?.parsedBundle?.loadedFiles?.imageSource;
+      if (!src) continue;
+      items.push({ prefix: `${entry.id}/`, src });
+    }
+    if (items.length === 0) return null;
+    return {
+      getCached(name) {
+        const norm = String(name || '').replace(/\\/g, '/');
+        for (const it of items) {
+          if (!norm.startsWith(it.prefix)) continue;
+          const localName = norm.slice(it.prefix.length);
+          return it.src.getCached(localName);
+        }
+        return undefined;
+      },
+      getImage(name) {
+        const norm = String(name || '').replace(/\\/g, '/');
+        for (const it of items) {
+          if (!norm.startsWith(it.prefix)) continue;
+          const localName = norm.slice(it.prefix.length);
+          return it.src.getImage(localName);
+        }
+        return Promise.resolve(null);
+      },
+      getMask(name) {
+        const norm = String(name || '').replace(/\\/g, '/');
+        for (const it of items) {
+          if (!norm.startsWith(it.prefix)) continue;
+          const localName = norm.slice(it.prefix.length);
+          return it.src.getMask(localName);
+        }
+        return Promise.resolve(null);
+      },
+      dispose() {
+        for (const it of items) {
+          try {
+            it.src.dispose?.();
+          } catch (err) {
+            console.warn('Merged zip imageSource dispose failed:', err);
+          }
+        }
+      },
+    };
+  }
+
   function rebuildVisualizationFromEntries(entries) {
     const visible = entries.filter((e) => e.visualized && e.parsedBundle?.colmapData);
     if (visible.length === 0) {
@@ -421,7 +470,11 @@ export function handleFileDrop(context) {
     };
 
     const mergedResolver = buildMergedResolver(visible);
-    setLoadedFiles({ imageResolver: mergedResolver });
+    const mergedZipSource = buildMergedZipImageSource(visible);
+    setLoadedFiles({
+      imageResolver: mergedResolver,
+      ...(mergedZipSource && { imageSource: mergedZipSource }),
+    });
     setColmapData(colmapDataMerged);
     const scale = deriveFrustumDisplayScale(mergedImages);
     setCameraScale(scale);
@@ -436,7 +489,9 @@ export function handleFileDrop(context) {
     if (entry.source.type === 'zip') {
       const zipFile = entry.source.zipFile;
       if (!zipFile) return null;
-      const { sparseFiles, imageSource } = await loadColmapFromZip(zipFile);
+      const { sparseFiles, imageSource } = await loadColmapFromZip(zipFile, {
+        noImage: !!entry.source.noImage,
+      });
       files = sparseFiles;
       const chosen = pickColmapDirectory(files);
       const parsedBundle = await parseChosenFiles(files, chosen, imageSource);
@@ -776,7 +831,8 @@ export function handleFileDrop(context) {
     }
   }
 
-  async function processZipFile(zipFile) {
+  async function processZipFile(zipFile, options = {}) {
+    const noImage = !!options.noImage;
     setLoading(true);
     try {
       const datasetId = makeDatasetId('zip');
@@ -795,7 +851,7 @@ export function handleFileDrop(context) {
               zipFile.name,
               { directoryPath: 'sparse/0', camerasFile: {}, imagesFile: {}, points3DFile: {} },
               false,
-              { type: 'zip', zipFile },
+              { type: 'zip', zipFile, noImage },
               false,
               null
             ),
@@ -805,7 +861,7 @@ export function handleFileDrop(context) {
         return;
       }
 
-      const { sparseFiles, imageSource } = await loadColmapFromZip(zipFile);
+      const { sparseFiles, imageSource } = await loadColmapFromZip(zipFile, { noImage });
       setSourceInfo('zip', null);
       const parsedBundle = await parseChosenFiles(sparseFiles, pickColmapDirectory(sparseFiles), imageSource);
       const zipEntry = makeDatasetEntry(
@@ -813,7 +869,7 @@ export function handleFileDrop(context) {
         zipFile.name,
         { directoryPath: 'sparse/0', camerasFile: {}, imagesFile: {}, points3DFile: {} },
         true,
-        { type: 'zip', zipFile },
+        { type: 'zip', zipFile, noImage },
         true,
         parsedBundle
       );

@@ -5,6 +5,22 @@ const COLMAP_UTIL_URL = 'https://colmap.utils.kiriengine.com/';
 const IFRAME_ORIGIN = 'https://colmap.utils.kiriengine.com';
 const ZIP_CHUNK_SIZE = 1024 * 1024; // 1MB（base64 约 1.33MB/条，一般 postMessage 可接受）
 
+/** 与 zipLoader 中 sparse 命名一致；NoImage 打包时跳过栅格图，但保留 sparse 与 database 等 */
+const SPARSE_COLMAP_BASENAMES = new Set([
+  'cameras.bin', 'cameras.txt', 'images.bin', 'images.txt',
+  'points3d.bin', 'points3d.txt', 'rigs.bin', 'rigs.txt', 'frames.bin', 'frames.txt',
+]);
+
+function shouldSkipFileForNoImageZip(relativePath) {
+  const norm = relativePath.replace(/\\/g, '/');
+  const base = norm.split('/').pop() || '';
+  const lower = base.toLowerCase();
+  if (SPARSE_COLMAP_BASENAMES.has(lower)) return false;
+  const inSparse = norm.includes('/sparse/') || norm.startsWith('sparse/');
+  if (inSparse && /\.(bin|txt)$/i.test(base)) return false;
+  return /\.(jpe?g|png|gif|bmp|webp|tiff?|heic|exr)$/i.test(norm);
+}
+
 /** 一次遍历收集文件列表，避免重复扫描 */
 async function collectFiles(dirUri, prefix) {
   const fileList = [];
@@ -42,12 +58,24 @@ function throttleProgress(intervalMs, intervalCount, onProgress) {
   };
 }
 
-/** 使用 workspace.fs 打包，支持 SSH Remote 等远程 URI */
-async function zipFolderToBuffer(folderUri, onProgress, onScanning) {
+/**
+ * 使用 workspace.fs 打包，支持 SSH Remote 等远程 URI
+ * @param {{ excludeRasterImages?: boolean }} [opts]
+ */
+async function zipFolderToBuffer(folderUri, onProgress, onScanning, opts = {}) {
+  const excludeRasterImages = !!opts.excludeRasterImages;
   const archiver = require('archiver');
   if (onScanning) onScanning();
   const fileList = await collectFiles(folderUri, '');
-  const totalFiles = fileList.length;
+  const toPack = excludeRasterImages
+    ? fileList.filter((f) => !shouldSkipFileForNoImageZip(f.name))
+    : fileList;
+  const totalFiles = toPack.length;
+  if (totalFiles === 0) {
+    throw new Error(
+      'No files left to pack (NoImage mode removed all raster files). Ensure sparse/ COLMAP files are present.'
+    );
+  }
   const throttled = onProgress ? throttleProgress(300, 20, onProgress) : null;
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -63,7 +91,7 @@ async function zipFolderToBuffer(folderUri, onProgress, onScanning) {
     archive.pipe(writable);
     let processed = 0;
     (async () => {
-      for (const { uri, name } of fileList) {
+      for (const { uri, name } of toPack) {
         const data = await vscode.workspace.fs.readFile(uri);
         archive.append(Buffer.from(data), { name });
         processed++;
@@ -185,7 +213,7 @@ function getWebviewContent() {
             if (fillWrap) fillWrap.style.display = 'none';
             if (text) text.textContent = '等待握手回复...';
           }
-          forwardToIframe({ type: 'colmaputil-handshake' });
+          forwardToIframe({ type: 'colmaputil-handshake', noImage: !!d.noImage });
           return;
         }
         if (d.type === 'colmaputil-zipDone') {
@@ -261,9 +289,9 @@ let colmapPanel = null;
 let webviewBootstrapped = false;
 let colmapIframeReady = false;
 let zipSessionId = 0;
-/** @type {vscode.Uri | null} */
-let pendingFolderUri = null;
-let pendingSession = 0;
+/** @type {{ uri: vscode.Uri; session: number; noImage: boolean } | null} */
+let pendingZip = null;
+let zipSessionNoImage = false;
 /** @type {Buffer | null} */
 let zipBuffer = null;
 let zipBufferSession = -1;
@@ -275,6 +303,7 @@ function bumpZipSession() {
   zipSessionId += 1;
   zipBuffer = null;
   zipBufferSession = -1;
+  zipSessionNoImage = false;
   if (chunkAckResolve) {
     const r = chunkAckResolve;
     chunkAckResolve = null;
@@ -289,7 +318,7 @@ function resetColmapPanelState() {
   zipBuffer = null;
   zipBufferSession = -1;
   chunkAckResolve = null;
-  pendingFolderUri = null;
+  pendingZip = null;
 }
 
 /**
@@ -323,7 +352,7 @@ async function sendZipChunks(panel, buf, session) {
  * @param {vscode.Uri} folderUri
  * @param {number} session
  */
-async function runZipFlow(panel, folderUri, session) {
+async function runZipFlow(panel, folderUri, session, noImage) {
   try {
     const buf = await zipFolderToBuffer(
       folderUri,
@@ -332,18 +361,20 @@ async function runZipFlow(panel, folderUri, session) {
       },
       () => {
         panel.webview.postMessage({ type: 'colmaputil-scanning' });
-      }
+      },
+      { excludeRasterImages: noImage }
     );
     if (session !== zipSessionId) return;
 
     zipBuffer = buf;
     zipBufferSession = session;
+    zipSessionNoImage = noImage;
 
     if (!colmapIframeReady) {
       panel.webview.postMessage({ type: 'colmaputil-zipDone' });
     } else {
       panel.webview.postMessage({ type: 'colmaputil-rezipZipComplete' });
-      panel.webview.postMessage({ type: 'colmaputil-handshake' });
+      panel.webview.postMessage({ type: 'colmaputil-handshake', noImage: zipSessionNoImage });
     }
   } catch (e) {
     const errMsg = (e && e.message) ? String(e.message) : '打包失败';
@@ -352,100 +383,107 @@ async function runZipFlow(panel, folderUri, session) {
   }
 }
 
+function attachColmapWebviewMessageHandler(panel) {
+  panel.webview.onDidReceiveMessage(async (msg) => {
+    if (!colmapPanel) return;
+
+    if (msg.type === 'chunkAck' && typeof msg.index === 'number') {
+      if (chunkAckResolve && msg.index === chunkAckExpectedIndex) {
+        chunkAckResolve();
+        chunkAckResolve = null;
+      }
+      return;
+    }
+
+    if (msg.type === 'compressingViewReady') {
+      webviewBootstrapped = true;
+      const p = pendingZip;
+      pendingZip = null;
+      if (p?.uri) {
+        void runZipFlow(panel, p.uri, p.session, p.noImage);
+      }
+      return;
+    }
+
+    if (msg.type === 'ready' && zipBuffer && zipBufferSession === zipSessionId) {
+      colmapIframeReady = true;
+      colmapPanel.webview.postMessage({ type: 'colmaputil-handshake', noImage: zipSessionNoImage });
+      return;
+    }
+
+    if (msg.type === 'iframeReady' && zipBuffer && zipBufferSession === zipSessionId) {
+      const buf = zipBuffer;
+      const sendSession = zipBufferSession;
+      zipBuffer = null;
+      zipBufferSession = -1;
+      try {
+        if (!buf) return;
+        await sendZipChunks(colmapPanel, buf, sendSession);
+      } catch (e) {
+        const errMsg = (e && e.message) ? String(e.message) : '发送失败';
+        void vscode.window.showErrorMessage('发送失败: ' + errMsg);
+        colmapPanel.webview.postMessage({ type: 'colmaputil-error', message: errMsg });
+      }
+      return;
+    }
+  });
+}
+
+function runSendToColmap(folderUri, noImage) {
+  if (!folderUri) return;
+
+  bumpZipSession();
+  const session = zipSessionId;
+
+  const title = `ColmapUtil — ${folderUri.fsPath.split(/[/\\]/).pop()}${noImage ? ' (NoImage)' : ''}`;
+
+  if (colmapPanel) {
+    colmapPanel.title = title;
+    colmapPanel.reveal(vscode.ViewColumn.One);
+    if (webviewBootstrapped) {
+      colmapPanel.webview.postMessage({ type: 'colmaputil-rezipBegin' });
+      void runZipFlow(colmapPanel, folderUri, session, noImage);
+    } else {
+      pendingZip = { uri: folderUri, session, noImage };
+    }
+    return;
+  }
+
+  pendingZip = { uri: folderUri, session, noImage };
+
+  colmapPanel = vscode.window.createWebviewPanel(
+    'colmapUtilWebview',
+    title,
+    vscode.ViewColumn.One,
+    {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+      localResourceRoots: []
+    }
+  );
+
+  colmapPanel.webview.html = getWebviewContent();
+  colmapPanel.reveal(vscode.ViewColumn.One);
+
+  colmapPanel.onDidDispose(() => {
+    bumpZipSession();
+    resetColmapPanelState();
+  });
+
+  attachColmapWebviewMessageHandler(colmapPanel);
+}
+
 function activate(context) {
   try {
-    const disposable = vscode.commands.registerCommand(
+    const d1 = vscode.commands.registerCommand(
       'colmaputil.sendToColmapUtil',
-      async (folderUri) => {
-        if (!folderUri) return;
-
-        bumpZipSession();
-        const session = zipSessionId;
-
-        const title = `ColmapUtil — ${folderUri.fsPath.split(/[/\\]/).pop()}`;
-
-        if (colmapPanel) {
-          colmapPanel.title = title;
-          colmapPanel.reveal(vscode.ViewColumn.One);
-          if (webviewBootstrapped) {
-            colmapPanel.webview.postMessage({ type: 'colmaputil-rezipBegin' });
-            void runZipFlow(colmapPanel, folderUri, session);
-          } else {
-            pendingFolderUri = folderUri;
-            pendingSession = session;
-          }
-          return;
-        }
-
-        pendingFolderUri = folderUri;
-        pendingSession = session;
-
-        colmapPanel = vscode.window.createWebviewPanel(
-          'colmapUtilWebview',
-          title,
-          vscode.ViewColumn.One,
-          {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-            localResourceRoots: []
-          }
-        );
-
-        colmapPanel.webview.html = getWebviewContent();
-        colmapPanel.reveal(vscode.ViewColumn.One);
-
-        colmapPanel.onDidDispose(() => {
-          bumpZipSession();
-          resetColmapPanelState();
-        });
-
-        colmapPanel.webview.onDidReceiveMessage(async (msg) => {
-          if (!colmapPanel) return;
-
-          if (msg.type === 'chunkAck' && typeof msg.index === 'number') {
-            if (chunkAckResolve && msg.index === chunkAckExpectedIndex) {
-              chunkAckResolve();
-              chunkAckResolve = null;
-            }
-            return;
-          }
-
-          if (msg.type === 'compressingViewReady') {
-            webviewBootstrapped = true;
-            const uri = pendingFolderUri;
-            const sess = pendingSession;
-            pendingFolderUri = null;
-            if (uri) {
-              void runZipFlow(colmapPanel, uri, sess);
-            }
-            return;
-          }
-
-          if (msg.type === 'ready' && zipBuffer && zipBufferSession === zipSessionId) {
-            colmapIframeReady = true;
-            colmapPanel.webview.postMessage({ type: 'colmaputil-handshake' });
-            return;
-          }
-
-          if (msg.type === 'iframeReady' && zipBuffer && zipBufferSession === zipSessionId) {
-            const buf = zipBuffer;
-            const sendSession = zipBufferSession;
-            zipBuffer = null;
-            zipBufferSession = -1;
-            try {
-              if (!buf) return;
-              await sendZipChunks(colmapPanel, buf, sendSession);
-            } catch (e) {
-              const errMsg = (e && e.message) ? String(e.message) : '发送失败';
-              void vscode.window.showErrorMessage('发送失败: ' + errMsg);
-              colmapPanel.webview.postMessage({ type: 'colmaputil-error', message: errMsg });
-            }
-            return;
-          }
-        });
-      }
+      (folderUri) => runSendToColmap(folderUri, false)
     );
-    context.subscriptions.push(disposable);
+    const d2 = vscode.commands.registerCommand(
+      'colmaputil.sendToColmapUtilNoImage',
+      (folderUri) => runSendToColmap(folderUri, true)
+    );
+    context.subscriptions.push(d1, d2);
 
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       const pattern = new vscode.RelativePattern(folder, RELOAD_TRIGGER_FILE);

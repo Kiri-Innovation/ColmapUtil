@@ -47,8 +47,13 @@ function colmapSparsePathKey(path, filename) {
   return `sparse/0/${filename}`;
 }
 
-/** Load COLMAP from ZIP; extract sparse files and build lazy image source. Returns { sparseFiles, imageSource }. */
-export async function loadColmapFromZip(zipFile) {
+/**
+ * Load COLMAP from ZIP; extract sparse files and build lazy image source.
+ * Returns { sparseFiles, imageSource }.
+ * @param {{ noImage?: boolean }} [options] — if true, do not read raster images from the archive (sparse reconstruction only).
+ */
+export async function loadColmapFromZip(zipFile, options = {}) {
+  const noImage = !!options.noImage;
   const v = checkZipSizeLimit(zipFile);
   if (!v.valid) throw new Error(v.error ?? 'Invalid ZIP');
 
@@ -63,7 +68,7 @@ export async function loadColmapFromZip(zipFile) {
     const full = entry.filename.replace(/\\/g, '/');
     if (pathIsSparseColmapFile(full)) {
       sparseEntries.push(entry);
-    } else if (pathLooksLikeImage(full)) {
+    } else if (!noImage && pathLooksLikeImage(full)) {
       imageEntryMap.set(full, entry);
       const base = full.split('/').pop() ?? full;
       if (!imageEntryMap.has(base)) imageEntryMap.set(base, entry);
@@ -89,6 +94,11 @@ export async function loadColmapFromZip(zipFile) {
   if (missing.length) {
     await zipReader.close();
     throw new Error(`ZIP missing: ${missing.join(' / ')}`);
+  }
+
+  if (noImage) {
+    await zipReader.close();
+    return { sparseFiles, imageSource: null };
   }
 
   const imageSource = makeLazyZipImageProvider(zipReader, imageEntryMap);

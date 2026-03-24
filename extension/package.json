@@ -2,20 +2,32 @@
   "name": "colmaputil-send",
   "displayName": "Send to ColmapUtil",
   "description": "Open ColmapUtil web app from Explorer folder context menu.",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "kiriengine",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Xenotech-Research/Kiri4DGS.git",
+    "directory": "Utils/ColmapUtil/extension"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": ["Other"],
   "extensionKind": ["workspace", "ui"],
-  "activationEvents": [ "onCommand:colmaputil.sendToColmapUtil" ],
+  "activationEvents": [
+    "onCommand:colmaputil.sendToColmapUtil",
+    "onCommand:colmaputil.sendToColmapUtilNoImage"
+  ],
   "main": "./src/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "colmaputil.sendToColmapUtil",
         "title": "Send to ColmapUtil"
+      },
+      {
+        "command": "colmaputil.sendToColmapUtilNoImage",
+        "title": "Send to ColmapUtil (NoImage)"
       }
     ],
     "menus": {
@@ -23,7 +35,12 @@
         {
           "command": "colmaputil.sendToColmapUtil",
           "when": "explorerResourceIsFolder",
-          "group": "navigation"
+          "group": "navigation@1"
+        },
+        {
+          "command": "colmaputil.sendToColmapUtilNoImage",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@2"
         }
       ]
     }

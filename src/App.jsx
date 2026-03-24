@@ -9,7 +9,7 @@ import { ToastContainer } from './components/common/ToastContainer';
 import { ExtensionModal } from './components/common/ExtensionModal';
 import { AppProvider, useAppContext, useUI, useSelection, useT } from './AppContext';
 import { LanguageSwitcher } from './components/common/LanguageSwitcher';
-import { isMobile } from './utils/isMobile.js';
+import { useIsMobile } from './utils/isMobile.js';
 import { useExtensionModalUrl, navigateAwayFromExtension } from './utils/extensionModalUrl';
 import { handleFileDrop } from './components/initiation-page/fileDropHandler.js';
 import './App.css';
@@ -331,7 +331,7 @@ function MainLayout() {
   const hideGallery = embedMode;
   const showDetailPanel = imageDetailId !== null;
 
-  const mobile = isMobile();
+  const mobile = useIsMobile();
 
   return (
     <>

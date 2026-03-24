@@ -780,8 +780,14 @@ export function handleFileDrop(context) {
     setLoading(true);
     try {
       const datasetId = makeDatasetId('zip');
-      const shouldKeepCurrentVisualization = !!(colmapData && activeDatasetEntryId);
-      if (shouldKeepCurrentVisualization) {
+      const entries = Array.isArray(datasetEntries) ? datasetEntries : [];
+      const keepActiveId =
+        activeDatasetEntryId ??
+        entries.find((e) => e.active)?.id ??
+        entries[0]?.id ??
+        null;
+      const shouldAppendToSidebar = entries.length > 0 && keepActiveId != null;
+      if (shouldAppendToSidebar) {
         appendDatasetsWithUniqueDisplayNames(
           [
             makeDatasetEntry(
@@ -794,7 +800,7 @@ export function handleFileDrop(context) {
               null
             ),
           ],
-          activeDatasetEntryId
+          keepActiveId
         );
         return;
       }

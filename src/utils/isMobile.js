@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { BREAKPOINT_MOBILE } from '../config.js';
 
 /**
@@ -31,4 +32,17 @@ export function isMobile() {
   // 2. 如果同时满足触摸设备 + 小屏幕，则为 mobile
   // 3. 单纯的小屏幕（如桌面浏览器缩小窗口）不算 mobile
   return hasMobileUA || (isTouchDevice && isSmallScreen);
+}
+
+/**
+ * 与 isMobile() 相同逻辑，但在窗口尺寸变化时重新计算（触摸笔记本窄窗拉宽后应恢复主界面）。
+ */
+export function useIsMobile() {
+  const [, setResizeTick] = useState(0);
+  useEffect(() => {
+    const onResize = () => setResizeTick((n) => n + 1);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return isMobile();
 }

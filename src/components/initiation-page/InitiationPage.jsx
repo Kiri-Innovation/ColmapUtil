@@ -6,7 +6,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { AppContext, useAppContext, useT } from '../../AppContext';
 import { LanguageTabSwitcher } from '../common/LanguageTabSwitcher';
 import { handleFileDrop } from './fileDropHandler.js';
-import { isMobile } from '../../utils/isMobile.js';
+import { useIsMobile } from '../../utils/isMobile.js';
 import { isExtensionPath } from '../../utils/extensionModalUrl';
 import { ERROR_TOAST_DURATION_MS } from '../../config';
 import { Info, Plus, X } from 'lucide-react';
@@ -317,7 +317,7 @@ export function InitiationPage({ children }) {
   const { error, clearError } = useErrorToast();
   const [showInfoModal, setShowInfoModal] = useState(false);
   const { loading, colmapData, datasetEntries, extensionReceiving, extensionReceiveFailed } = useAppContext();
-  const mobile = isMobile();
+  const mobile = useIsMobile();
   const hasDatasets = Array.isArray(datasetEntries) && datasetEntries.length > 0;
 
   const shouldShowEmptyState =

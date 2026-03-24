@@ -128,7 +128,7 @@ function getWebviewContent() {
         var d = event.data;
         if (!d) return;
         var frame = document.getElementById('colmap-frame');
-        if (frame.contentWindow && event.source === frame.contentWindow) {
+        if (frame && frame.contentWindow && event.source === frame.contentWindow) {
           if (d.type === 'colmaputil-page-ready') {
             sendToExtension({ type: 'ready' });
             return;
@@ -140,6 +140,24 @@ function getWebviewContent() {
             if (bar && text) text.textContent = '握手成功，准备发送...';
           }
           if (d.type === 'colmaputil-chunk-ack' && typeof d.index === 'number') sendToExtension({ type: 'chunkAck', index: d.index });
+          return;
+        }
+        if (d.type === 'colmaputil-rezipBegin') {
+          var cv = document.getElementById('compressing-view');
+          var fe = document.getElementById('colmap-frame');
+          if (cv) cv.classList.remove('hidden');
+          if (fe) fe.classList.add('hidden');
+          var el = document.getElementById('progress-fill');
+          var text = document.getElementById('progress-text');
+          if (el) el.style.width = '0%';
+          if (text) text.textContent = '压缩中...';
+          return;
+        }
+        if (d.type === 'colmaputil-rezipZipComplete') {
+          var cv2 = document.getElementById('compressing-view');
+          var fe2 = document.getElementById('colmap-frame');
+          if (cv2) cv2.classList.add('hidden');
+          if (fe2) fe2.classList.remove('hidden');
           return;
         }
         if (d.type === 'colmaputil-scanning') {
@@ -193,6 +211,8 @@ function getWebviewContent() {
         }
         if (d.type === 'colmaputil-error') {
           document.getElementById('compressing-view').classList.add('hidden');
+          var fe3 = document.getElementById('colmap-frame');
+          if (fe3) fe3.classList.remove('hidden');
           var bar = document.getElementById('send-progress-bar');
           var text = document.getElementById('send-progress-text');
           bar.classList.add('visible', 'error');
@@ -236,108 +256,209 @@ function getWebviewContent() {
 
 const RELOAD_TRIGGER_FILE = '.reload-extension';
 
+/** @type {vscode.WebviewPanel | null} */
+let colmapPanel = null;
+let webviewBootstrapped = false;
+let colmapIframeReady = false;
+let zipSessionId = 0;
+/** @type {vscode.Uri | null} */
+let pendingFolderUri = null;
+let pendingSession = 0;
+/** @type {Buffer | null} */
+let zipBuffer = null;
+let zipBufferSession = -1;
+/** @type {(() => void) | null} */
+let chunkAckResolve = null;
+let chunkAckExpectedIndex = -1;
+
+function bumpZipSession() {
+  zipSessionId += 1;
+  zipBuffer = null;
+  zipBufferSession = -1;
+  if (chunkAckResolve) {
+    const r = chunkAckResolve;
+    chunkAckResolve = null;
+    r();
+  }
+}
+
+function resetColmapPanelState() {
+  colmapPanel = null;
+  webviewBootstrapped = false;
+  colmapIframeReady = false;
+  zipBuffer = null;
+  zipBufferSession = -1;
+  chunkAckResolve = null;
+  pendingFolderUri = null;
+}
+
+/**
+ * @param {vscode.WebviewPanel} panel
+ * @param {Buffer} buf
+ * @param {number} session
+ */
+async function sendZipChunks(panel, buf, session) {
+  const base64 = buf.toString('base64');
+  const total = Math.ceil(base64.length / ZIP_CHUNK_SIZE);
+  panel.webview.postMessage({ type: 'colmaputil-sendStart', total });
+  for (let i = 0; i < total; i++) {
+    if (session !== zipSessionId) return;
+    const start = i * ZIP_CHUNK_SIZE;
+    const end = Math.min(start + ZIP_CHUNK_SIZE, base64.length);
+    panel.webview.postMessage({
+      type: 'colmaputil-zipChunk',
+      index: i,
+      total,
+      data: base64.slice(start, end)
+    });
+    chunkAckExpectedIndex = i;
+    await new Promise((r) => {
+      chunkAckResolve = r;
+    });
+  }
+}
+
+/**
+ * @param {vscode.WebviewPanel} panel
+ * @param {vscode.Uri} folderUri
+ * @param {number} session
+ */
+async function runZipFlow(panel, folderUri, session) {
+  try {
+    const buf = await zipFolderToBuffer(
+      folderUri,
+      (processed, total) => {
+        panel.webview.postMessage({ type: 'colmaputil-zipProgress', processed, total });
+      },
+      () => {
+        panel.webview.postMessage({ type: 'colmaputil-scanning' });
+      }
+    );
+    if (session !== zipSessionId) return;
+
+    zipBuffer = buf;
+    zipBufferSession = session;
+
+    if (!colmapIframeReady) {
+      panel.webview.postMessage({ type: 'colmaputil-zipDone' });
+    } else {
+      panel.webview.postMessage({ type: 'colmaputil-rezipZipComplete' });
+      panel.webview.postMessage({ type: 'colmaputil-handshake' });
+    }
+  } catch (e) {
+    const errMsg = (e && e.message) ? String(e.message) : '打包失败';
+    void vscode.window.showErrorMessage('打包失败: ' + errMsg);
+    panel.webview.postMessage({ type: 'colmaputil-error', message: errMsg });
+  }
+}
+
 function activate(context) {
   try {
     const disposable = vscode.commands.registerCommand(
-    'colmaputil.sendToColmapUtil',
-    async (folderUri) => {
-      const title = folderUri ? `ColmapUtil — ${folderUri.fsPath.split(/[/\\]/).pop()}` : 'ColmapUtil';
-      const panel = vscode.window.createWebviewPanel(
-        'colmapUtilWebview',
-        title,
-        vscode.ViewColumn.One,
-        {
-          enableScripts: true,
-          retainContextWhenHidden: true,
-          localResourceRoots: []
-        }
-      );
-      panel.webview.html = getWebviewContent();
-      panel.reveal();
-      let zipBuffer = null;
-      let chunkAckResolve = null;
-      let chunkAckExpectedIndex = -1;
-      panel.webview.onDidReceiveMessage(async (msg) => {
-        if (msg.type === 'chunkAck' && typeof msg.index === 'number') {
-          if (chunkAckResolve && msg.index === chunkAckExpectedIndex) {
-            chunkAckResolve();
-            chunkAckResolve = null;
+      'colmaputil.sendToColmapUtil',
+      async (folderUri) => {
+        if (!folderUri) return;
+
+        bumpZipSession();
+        const session = zipSessionId;
+
+        const title = `ColmapUtil — ${folderUri.fsPath.split(/[/\\]/).pop()}`;
+
+        if (colmapPanel) {
+          colmapPanel.title = title;
+          colmapPanel.reveal(vscode.ViewColumn.One);
+          if (webviewBootstrapped) {
+            colmapPanel.webview.postMessage({ type: 'colmaputil-rezipBegin' });
+            void runZipFlow(colmapPanel, folderUri, session);
+          } else {
+            pendingFolderUri = folderUri;
+            pendingSession = session;
           }
           return;
         }
-        if (msg.type === 'compressingViewReady' && folderUri) {
-          (async () => {
-            try {
-              zipBuffer = await zipFolderToBuffer(
-                folderUri,
-                (processed, total) => {
-                  panel.webview.postMessage({ type: 'colmaputil-zipProgress', processed, total });
-                },
-                () => {
-                  panel.webview.postMessage({ type: 'colmaputil-scanning' });
-                }
-              );
-              panel.webview.postMessage({ type: 'colmaputil-zipDone' });
-            } catch (e) {
-              const errMsg = (e && e.message) ? String(e.message) : '打包失败';
-              void vscode.window.showErrorMessage('打包失败: ' + errMsg);
-              panel.webview.postMessage({ type: 'colmaputil-error', message: errMsg });
+
+        pendingFolderUri = folderUri;
+        pendingSession = session;
+
+        colmapPanel = vscode.window.createWebviewPanel(
+          'colmapUtilWebview',
+          title,
+          vscode.ViewColumn.One,
+          {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: []
+          }
+        );
+
+        colmapPanel.webview.html = getWebviewContent();
+        colmapPanel.reveal(vscode.ViewColumn.One);
+
+        colmapPanel.onDidDispose(() => {
+          bumpZipSession();
+          resetColmapPanelState();
+        });
+
+        colmapPanel.webview.onDidReceiveMessage(async (msg) => {
+          if (!colmapPanel) return;
+
+          if (msg.type === 'chunkAck' && typeof msg.index === 'number') {
+            if (chunkAckResolve && msg.index === chunkAckExpectedIndex) {
+              chunkAckResolve();
+              chunkAckResolve = null;
             }
-          })();
-          return;
-        }
-        if (msg.type === 'ready' && zipBuffer) {
-          panel.webview.postMessage({ type: 'colmaputil-handshake' });
-          return;
-        }
-        if (msg.type === 'iframeReady' && zipBuffer) {
-          const buf = zipBuffer;
-          zipBuffer = null;
-          (async () => {
+            return;
+          }
+
+          if (msg.type === 'compressingViewReady') {
+            webviewBootstrapped = true;
+            const uri = pendingFolderUri;
+            const sess = pendingSession;
+            pendingFolderUri = null;
+            if (uri) {
+              void runZipFlow(colmapPanel, uri, sess);
+            }
+            return;
+          }
+
+          if (msg.type === 'ready' && zipBuffer && zipBufferSession === zipSessionId) {
+            colmapIframeReady = true;
+            colmapPanel.webview.postMessage({ type: 'colmaputil-handshake' });
+            return;
+          }
+
+          if (msg.type === 'iframeReady' && zipBuffer && zipBufferSession === zipSessionId) {
+            const buf = zipBuffer;
+            const sendSession = zipBufferSession;
+            zipBuffer = null;
+            zipBufferSession = -1;
             try {
               if (!buf) return;
-              const base64 = buf.toString('base64');
-              const total = Math.ceil(base64.length / ZIP_CHUNK_SIZE);
-              panel.webview.postMessage({ type: 'colmaputil-sendStart', total });
-              for (let i = 0; i < total; i++) {
-                const start = i * ZIP_CHUNK_SIZE;
-                const end = Math.min(start + ZIP_CHUNK_SIZE, base64.length);
-                panel.webview.postMessage({
-                  type: 'colmaputil-zipChunk',
-                  index: i,
-                  total,
-                  data: base64.slice(start, end)
-                });
-                chunkAckExpectedIndex = i;
-                await new Promise((r) => { chunkAckResolve = r; });
-              }
+              await sendZipChunks(colmapPanel, buf, sendSession);
             } catch (e) {
               const errMsg = (e && e.message) ? String(e.message) : '发送失败';
               void vscode.window.showErrorMessage('发送失败: ' + errMsg);
-              panel.webview.postMessage({ type: 'colmaputil-error', message: errMsg });
+              colmapPanel.webview.postMessage({ type: 'colmaputil-error', message: errMsg });
             }
-          })();
-          return;
-        }
-      });
-    }
-  );
-  context.subscriptions.push(disposable);
+            return;
+          }
+        });
+      }
+    );
+    context.subscriptions.push(disposable);
 
-  // buildext:cursor 安装后写入 .reload-extension，此处监听到后自动重载窗口
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    const pattern = new vscode.RelativePattern(folder, RELOAD_TRIGGER_FILE);
-    const watcher = vscode.workspace.createFileSystemWatcher(pattern);
-    watcher.onDidCreate(() => {
-      void vscode.commands.executeCommand('workbench.action.reloadWindow');
-    });
-    context.subscriptions.push(watcher);
-  }
-  // 启动时若存在触发文件则删除，避免每次启动都误重载
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    const uri = vscode.Uri.joinPath(folder.uri, RELOAD_TRIGGER_FILE);
-    void vscode.workspace.fs.delete(uri).then(() => {}, () => {});
-  }
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      const pattern = new vscode.RelativePattern(folder, RELOAD_TRIGGER_FILE);
+      const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+      watcher.onDidCreate(() => {
+        void vscode.commands.executeCommand('workbench.action.reloadWindow');
+      });
+      context.subscriptions.push(watcher);
+    }
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      const uri = vscode.Uri.joinPath(folder.uri, RELOAD_TRIGGER_FILE);
+      void vscode.workspace.fs.delete(uri).then(() => {}, () => {});
+    }
   } catch (err) {
     void vscode.window.showErrorMessage('ColmapUtil 扩展激活失败: ' + (err && err.message));
     throw err;

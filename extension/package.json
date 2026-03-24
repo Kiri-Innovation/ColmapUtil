@@ -2,7 +2,7 @@
   "name": "colmaputil-send",
   "displayName": "Send to ColmapUtil",
   "description": "Open ColmapUtil web app from Explorer folder context menu.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "kiriengine",
   "engines": {
     "vscode": "^1.85.0"

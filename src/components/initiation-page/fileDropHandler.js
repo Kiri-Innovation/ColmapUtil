@@ -20,6 +20,24 @@ import { clearFrustumCache } from '../visualizer/ImageTextureManager.js';
 import { cameraWorldPositionFromPose } from '../../utils/colmapTransforms.js';
 import { isZipFile, loadColmapFromZip } from '../../utils/zipLoader.js';
 
+function fileMapHasRasterImagePaths(fileMap) {
+  if (!fileMap || typeof fileMap.keys !== 'function') return false;
+  for (const k of fileMap.keys()) {
+    if (/\.(jpe?g|png|gif|bmp|webp|tiff?)$/i.test(String(k))) return true;
+  }
+  return false;
+}
+
+/** 多数据集合并后是否允许视锥图像纹理（任一为 true/legacy 即 true；全为 false 则 false）。 */
+function mergedCanResolveRasterImages(visibleEntries) {
+  return visibleEntries.some((e) => {
+    const v = e?.parsedBundle?.loadedFiles?.canResolveRasterImages;
+    if (v === true) return true;
+    if (v === false) return false;
+    return true;
+  });
+}
+
 /**
  * Estimate frustum display scale from scene bounding box and camera count.
  * Scale ~ radius / n^0.4 so sparse scenes appear larger, dense scenes smaller.
@@ -474,6 +492,7 @@ export function handleFileDrop(context) {
     setLoadedFiles({
       imageResolver: mergedResolver,
       ...(mergedZipSource && { imageSource: mergedZipSource }),
+      canResolveRasterImages: mergedCanResolveRasterImages(visible),
     });
     setColmapData(colmapDataMerged);
     const scale = deriveFrustumDisplayScale(mergedImages);
@@ -533,6 +552,7 @@ export function handleFileDrop(context) {
         imageResolver: folderResolver,
       };
     }
+    loadedFilesObj.canResolveRasterImages = !!zipImageSource || fileMapHasRasterImagePaths(files);
 
     const [cameras, images, points3D] = await Promise.all([
       chosen.camerasFile.name.endsWith('.bin')
@@ -707,6 +727,7 @@ export function handleFileDrop(context) {
           rigsFile: chosen.rigsFile,
           framesFile: chosen.framesFile,
           imageSource: zipImageSource,
+          canResolveRasterImages: true,
         });
       } else {
         folderResolver = makeFolderImageResolver(files);
@@ -718,6 +739,7 @@ export function handleFileDrop(context) {
           rigsFile: chosen.rigsFile,
           framesFile: chosen.framesFile,
           imageResolver: folderResolver,
+          canResolveRasterImages: fileMapHasRasterImagePaths(files),
         });
       }
 

@@ -67,11 +67,12 @@ export class ImageTextureManager {
 
   /** Load textures for visible frustums; call onTextureMapUpdate when done.
    * @param {object} loadedFiles - when imageFile is missing (e.g. ZIP), async resolve is used
+   * @param {boolean} allowRasterTextures - false for NoImage / sparse-only: skip image planes
    */
-  update(frustums, showImagePlane, selectedImageId, loadedFiles = null) {
+  update(frustums, showImagePlane, selectedImageId, loadedFiles = null, allowRasterTextures = true) {
     const gen = ++this._gen;
     const visible = [];
-    if (frustums?.length) {
+    if (frustums?.length && allowRasterTextures) {
       for (const f of frustums) {
         const imageId = f.image?.imageId;
         const isSelected = imageId === selectedImageId;

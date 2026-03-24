@@ -60,18 +60,23 @@ function modelMatrixFromPose(position, quaternion) {
  * @param {WebGL2RenderingContext} gl
  * @param {Array} frustumsData
  * @param {Map<number, { bitmap: ImageBitmap, hasAlpha: boolean }>} textureMap - imageId -> { bitmap, hasAlpha }
- * @param {{ cameraScale: number; selectedImageId: number|null; showImagePlane: boolean }} options
+ * @param {{ cameraScale: number; selectedImageId: number|null; showImagePlane: boolean; allowRasterTextures?: boolean }} options
  * @returns {{ imageId: number; obj: RenderableObject; texture: WebGLTexture|null }[]}
  */
 export function buildImagePlaneMeshObjects(gl, frustumsData, textureMap, options = {}) {
-  const { cameraScale = 1, selectedImageId = null, showImagePlane = false } = options;
+  const {
+    cameraScale = 1,
+    selectedImageId = null,
+    showImagePlane = false,
+    allowRasterTextures = true,
+  } = options;
   const out = [];
   if (!frustumsData?.length) return out;
 
   for (const f of frustumsData) {
     const imageId = f.image.imageId;
     const isSelected = imageId === selectedImageId;
-    const shouldShow = showImagePlane || isSelected;
+    const shouldShow = allowRasterTextures && (showImagePlane || isSelected);
     if (!shouldShow) continue;
 
     const camera = f.camera;

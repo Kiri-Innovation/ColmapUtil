@@ -132,6 +132,8 @@ export function ColmapVisualizer() {
   
   // Colmap data (Context)
   const { colmapData, loadedFiles } = useAppContext();
+  /** false = NoImage / 仅有 sparse、无栅格图：不显视锥图像平面、不解码纹理 */
+  const frustumRasterOk = loadedFiles?.canResolveRasterImages !== false;
   
   // Temporary UI state
   const [hoveredImageId, setHoveredImageId] = useState(null);
@@ -876,8 +878,14 @@ export function ColmapVisualizer() {
     imageTextureManagerRef.current = new ImageTextureManager({ onTextureMapUpdate: handleTextureMapUpdate });
   }
   useEffect(() => {
-    imageTextureManagerRef.current?.update(frustums, showImagePlane, selectedImageId, loadedFiles);
-  }, [frustums, showImagePlane, selectedImageId, loadedFiles]);
+    imageTextureManagerRef.current?.update(
+      frustums,
+      showImagePlane,
+      selectedImageId,
+      frustumRasterOk ? loadedFiles : null,
+      frustumRasterOk
+    );
+  }, [frustums, showImagePlane, selectedImageId, loadedFiles, frustumRasterOk]);
 
   useEffect(() => {
     const pipeline = pipelineRef.current;
@@ -902,6 +910,7 @@ export function ColmapVisualizer() {
       cameraScale,
       selectedImageId,
       showImagePlane,
+      allowRasterTextures: frustumRasterOk,
     });
     
     // Show matches and selected match
@@ -939,7 +948,7 @@ export function ColmapVisualizer() {
       map.set(imageId, { obj, texture });
     }
     return removeAll;
-  }, [gl, frustums, cameraScale, selectedImageId, showImagePlane, textureMapVersion, imageDetailId, showMatchesInModal, matchedImageId]);
+  }, [gl, frustums, cameraScale, selectedImageId, showImagePlane, textureMapVersion, imageDetailId, showMatchesInModal, matchedImageId, frustumRasterOk]);
 
   // Hex color to RGB (0-1)
   const backgroundColorRgb = useMemo(() => {

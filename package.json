@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "buildext": "node -e \"require('fs').mkdirSync('public',{recursive:true})\" && cd extension && npx --yes @vscode/vsce package --allow-missing-repository -o ../public/colmaputil-send.vsix",
-    "buildext:cursor": "yarn buildext && cursor --install-extension public/colmaputil-send.vsix && node extension/scripts/trigger-reload.js",
+    "buildext": "node -e \"require('fs').mkdirSync('public',{recursive:true})\" && cd extension && yarn install --ignore-scripts && npx --yes @vscode/vsce package --allow-missing-repository -o ../public/colmaputil-send.vsix",
+    "buildext:cursor": "cd extension && yarn install-local",
+    "release-ext": "cd extension && yarn release",
     "lint": "eslint .",
     "preview": "vite preview"
   },

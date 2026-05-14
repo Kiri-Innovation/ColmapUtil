@@ -26,3 +26,12 @@ dist-ssr
 nginx*.conf
 logs/*
 sample_colmap*/*
+
+# extension/scripts/install-to-cursor.js 写入的重载标记（勿提交）
+.reload-extension
+
+# extension/scripts/release.js 读取的本地 PAT（勿提交）
+extension/secrets/
+
+# extension 本地打出来的 .vsix（与 public/colmaputil-send.vsix 区分）
+extension/*.vsix

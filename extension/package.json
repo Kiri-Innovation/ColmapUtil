@@ -2,12 +2,12 @@
   "name": "colmaputil-send",
   "displayName": "Send to ColmapUtil",
   "description": "Open ColmapUtil web app from Explorer folder context menu.",
-  "version": "0.0.4",
-  "publisher": "kiriengine",
+  "version": "0.0.5",
+  "publisher": "kiri-innov",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Xenotech-Research/Kiri4DGS.git",
-    "directory": "Utils/ColmapUtil/extension"
+    "url": "https://github.com/Kiri-Innovation/ColmapUtil.git",
+    "directory": "extension"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -45,7 +45,12 @@
       ]
     }
   },
-  "scripts": {},
+  "scripts": {
+    "package": "yarn install --ignore-scripts && npx --yes @vscode/vsce package --allow-missing-repository",
+    "install-to-cursor": "node scripts/install-to-cursor.js",
+    "install-local": "yarn package && yarn install-to-cursor",
+    "release": "node scripts/release.js"
+  },
   "devDependencies": {},
   "dependencies": { "archiver": "^7.0.1" }
 }

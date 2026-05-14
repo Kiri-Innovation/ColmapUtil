@@ -1,5 +1,7 @@
 .vscode/**
 scripts/**
+secrets/**
 *.vsix
 *.md
 .gitignore
+.reload-extension

@@ -75,6 +75,39 @@ function ExtensionReceivingOverlay() {
   );
 }
 
+// `?embed=1` 嵌入模式：父页面（如 Kiri4D admin）通过 postMessage 直接推 Blob
+function isEmbedMode() {
+  if (typeof window === 'undefined') return false;
+  const p = new URLSearchParams(window.location.search);
+  const v = p.get('embed');
+  return v === '1' || v === 'true';
+}
+
+function EmbedZipListener({ context }) {
+  const { processZipFile } = handleFileDrop(context);
+  useEffect(() => {
+    if (!isEmbedMode()) return;
+    const handler = (event) => {
+      const d = event?.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type !== 'colmap-load-zip') return;
+      const blob = d.blob;
+      if (!(blob instanceof Blob)) return;
+      const name = typeof d.name === 'string' && d.name ? d.name : 'colmap.zip';
+      const file = blob instanceof File ? blob : new File([blob], name, { type: 'application/zip' });
+      processZipFile(file);
+    };
+    window.addEventListener('message', handler);
+    try {
+      if (window.parent !== window) {
+        window.parent.postMessage({ type: 'colmap-ready' }, '*');
+      }
+    } catch { /* parent gone */ }
+    return () => window.removeEventListener('message', handler);
+  }, [processZipFile]);
+  return null;
+}
+
 // Listens for postMessage: handshake (close drag modal, open receiving modal), then chunks with ack
 function ExtensionZipListener({ context }) {
   const { processZipFile } = handleFileDrop(context);
@@ -331,7 +364,8 @@ export function InitiationPage({ children }) {
     !mobile &&
     !extensionReceiving &&
     !extensionReceiveFailed &&
-    !isExtensionPath();
+    !isExtensionPath() &&
+    !isEmbedMode();
 
   // ESC 关闭：优先关「查看说明」弹窗，否则关 initiation 空状态
   useEffect(() => {
@@ -379,6 +413,7 @@ export function InitiationPage({ children }) {
       onDrop={handleFileDropAsync}
     >
       <ExtensionZipListener context={context} />
+      <EmbedZipListener context={context} />
       {children}
 
       {isDragging && <DragOverlay />}

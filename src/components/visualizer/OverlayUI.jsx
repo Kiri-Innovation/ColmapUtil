@@ -880,9 +880,9 @@ function CamerasRow({
                       value={cameraScale}
                       min={0.01}
                       max={10}
-                      step={0.1}
+                      step={0.01}
                       onChange={setCameraScale}
-                      formatValue={v => v.toFixed(1)}
+                      formatValue={v => v.toFixed(2)}
                     />
                     
                     <SelectRow

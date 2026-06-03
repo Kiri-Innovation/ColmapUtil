@@ -878,7 +878,7 @@ function CamerasRow({
                     <SliderRow
                       label={t('cameraScale')}
                       value={cameraScale}
-                      min={0.1}
+                      min={0.01}
                       max={10}
                       step={0.1}
                       onChange={setCameraScale}

@@ -201,6 +201,9 @@ export const T = {
   maskModeMask: { en: 'mask', zh: 'mask' },
   maskModeSplit: { en: 'split', zh: 'split' },
   maskModeImage: { en: 'image', zh: 'image' },
+  alphaBgPanel: { en: 'Alpha bg: panel', zh: 'Alpha 背景：面板' },
+  alphaBgRed: { en: 'Alpha bg: dark red', zh: 'Alpha 背景：深红' },
+  alphaBgChecker: { en: 'Alpha bg: checker', zh: 'Alpha 背景：棋盘格' },
   clickLabel: { en: 'Click:', zh: 'Click:' },
 
   // Image gallery

@@ -11,7 +11,7 @@ import { useSetting } from '../../utils/settings';
 import { resolveImageFromLoaded, resolveImageFromLoadedAsync, resolveMaskFromLoadedAsync, loadedFilesUseZip } from '../../utils/imageFileUtils';
 import { GAP_MATCH_VIEW, RESIZE_DEBOUNCE_MS, OPACITY_MATCH_LINES } from '../../config';
 import { VIZ_POINT_TRIANGULATED, VIZ_POINT_UNTRIANGULATED, VIZ_MATCH } from '../../components/visualizer/constants';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Grid3X3 } from 'lucide-react';
 import { MouseScrollIcon } from '../../assets/custom_icons';
 
 /** File -> blob URL，依赖变化或卸载时延迟回收 */
@@ -446,12 +446,21 @@ export function ImageDetailPanel() {
   const [matchSelectScrollTooltip, setMatchSelectScrollTooltip] = useState({ show: false, top: 0, left: 0 });
   /** 翻页器滚轮图标的 tooltip：同上，右对齐图标避免超出画面 */
   const [paginationScrollTooltip, setPaginationScrollTooltip] = useState({ show: false, top: 0, left: 0 });
+  /** alpha 背景模式：panel(面板底色) / red(深红纯色) / checker(棋盘格) */
+  const [alphaBgMode, setAlphaBgMode] = useState('panel');
 
   const cycleMaskMode = useCallback(() => {
     setMaskMode(prev => {
       const modes = ['hover', 'mask', 'split', 'image'];
       const currentIndex = modes.indexOf(prev);
       return modes[(currentIndex + 1) % modes.length];
+    });
+  }, []);
+
+  const cycleAlphaBg = useCallback(() => {
+    setAlphaBgMode(prev => {
+      const modes = ['panel', 'red', 'checker'];
+      return modes[(modes.indexOf(prev) + 1) % modes.length];
     });
   }, []);
 
@@ -490,6 +499,26 @@ export function ImageDetailPanel() {
 
   const imageSrc = useFileUrl(imageFile);
   const maskSrc = useFileUrl(maskFile);
+
+  const alphaBgStyle = useMemo(() => {
+    switch (alphaBgMode) {
+      case 'red':
+        return { backgroundColor: '#700' };
+      case 'checker':
+        return {
+          backgroundImage: `
+            linear-gradient(45deg, #555 25%, transparent 25%),
+            linear-gradient(-45deg, #555 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #555 75%),
+            linear-gradient(-45deg, transparent 75%, #555 75%)
+          `,
+          backgroundSize: '16px 16px',
+          backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+        };
+      default:
+        return {};
+    }
+  }, [alphaBgMode]);
 
   const { numPoints2D, numPoints3D } = useMemo(() => {
     if (!image || !colmapData) return { numPoints2D: 0, numPoints3D: 0 };
@@ -989,8 +1018,17 @@ export function ImageDetailPanel() {
         <div
           ref={imageContainerRef}
           className="group/scroll relative flex-1 min-h-0 bg-ds-secondary rounded overflow-hidden"
-          style={{ paddingBottom: cameraDetailReserveHeight }}
+          style={{ paddingBottom: cameraDetailReserveHeight, ...alphaBgStyle }}
         >
+          {/* alpha 背景切换按钮 */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); cycleAlphaBg(); }}
+            title={t(alphaBgMode === 'panel' ? 'alphaBgPanel' : alphaBgMode === 'red' ? 'alphaBgRed' : 'alphaBgChecker')}
+            className="absolute top-2 right-2 z-10 w-7 h-7 flex items-center justify-center rounded bg-ds-void/50 hover:bg-ds-void/80 text-ds-secondary/70 hover:text-ds-secondary transition-opacity opacity-0 group-hover/scroll:opacity-100"
+          >
+            <Grid3X3 className="w-4 h-4" />
+          </button>
           {hasMask && maskSrc && (() => {
             const nextMode = maskMode === 'hover' ? 'mask' : maskMode === 'mask' ? 'split' : maskMode === 'split' ? 'image' : 'hover';
             const modeLabel = (m) => t(m === 'hover' ? 'maskModeHover' : m === 'mask' ? 'maskModeMask' : m === 'split' ? 'maskModeSplit' : 'maskModeImage');

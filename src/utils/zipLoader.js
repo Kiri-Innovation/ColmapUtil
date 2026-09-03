@@ -10,6 +10,8 @@ const IMAGE_EXT_REGEX = /\.(jpe?g|png|gif|bmp|webp|tiff?)$/i;
 const SPARSE_FILE_BASENAMES = new Set([
   'cameras.bin', 'cameras.txt', 'images.bin', 'images.txt',
   'points3d.bin', 'points3d.txt', 'rigs.bin', 'rigs.txt', 'frames.bin', 'frames.txt',
+  // colmap4d time sidecars
+  'times.bin', 'times.txt', 'points_t.bin', 'points_t.txt', 'time_meta.json',
 ]);
 
 export const MAX_ZIP_BYTES = MAX_ARCHIVE_BYTES;

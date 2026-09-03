@@ -9,6 +9,11 @@ import {
   parseRigsText,
   parseFramesBinary,
   parseFramesText,
+  parseTimesBinary,
+  parseTimesText,
+  parsePointsTBinary,
+  parsePointsTText,
+  parseTimeMetaText,
 } from '../../codec/parse/colmapDataCodec.js';
 import { computeImageStats } from '../../codec/stats/colmapStatsCalc.js';
 import { getToast } from '../../AppContext.jsx';
@@ -79,6 +84,41 @@ function deriveFrustumDisplayScale(images) {
   const hi = radius * 0.12;
   scale = Math.max(lo, Math.min(hi, scale));
   return Math.max(scale, 0.08);
+}
+
+/**
+ * Parse colmap4d time sidecars (if present in `chosen`) and join `t` onto the entity objects:
+ * each image gets `.t` (BigInt ns | null=timeless), each point gets `.t` (BigInt ns | null).
+ * Because `t` lives on the entity objects, it rides the `{...image}`/`{...point}` spreads through
+ * the multi-dataset merge remap for free. Returns the parsed time_meta (or null). Best-effort:
+ * a sidecar parse failure never breaks base-model loading (backward compatibility).
+ */
+async function loadSidecarsAndJoin(chosen, images, pointCloud) {
+  let timeMeta = null;
+  try {
+    if (chosen?.timesFile) {
+      const timesMap = chosen.timesFile.name.endsWith('.bin')
+        ? await chosen.timesFile.arrayBuffer().then(parseTimesBinary)
+        : await chosen.timesFile.text().then(parseTimesText);
+      for (const img of images.values()) {
+        img.t = timesMap.has(img.imageId) ? timesMap.get(img.imageId) : null;
+      }
+    }
+    if (chosen?.pointsTFile && pointCloud) {
+      const ptMap = chosen.pointsTFile.name.endsWith('.bin')
+        ? await chosen.pointsTFile.arrayBuffer().then(parsePointsTBinary)
+        : await chosen.pointsTFile.text().then(parsePointsTText);
+      for (const pt of pointCloud.values()) {
+        pt.t = ptMap.has(pt.point3DId) ? ptMap.get(pt.point3DId) : null;
+      }
+    }
+    if (chosen?.timeMetaFile) {
+      timeMeta = await chosen.timeMetaFile.text().then(parseTimeMetaText);
+    }
+  } catch (err) {
+    console.warn('Parse time sidecars failed (ignored):', err);
+  }
+  return timeMeta;
 }
 
 /**
@@ -171,6 +211,10 @@ export function handleFileDrop(context) {
       else if (name === 'database.db' || name === 'colmap.db') bag.database = file;
       else if (name === 'rigs.bin' || (name === 'rigs.txt' && preferBin(bag.rigs))) bag.rigs = file;
       else if (name === 'frames.bin' || (name === 'frames.txt' && preferBin(bag.frames))) bag.frames = file;
+      // colmap4d time sidecars (exact stems only)
+      else if (name === 'times.bin' || (name === 'times.txt' && preferBin(bag.times))) bag.times = file;
+      else if (name === 'points_t.bin' || (name === 'points_t.txt' && preferBin(bag.pointsT))) bag.pointsT = file;
+      else if (name === 'time_meta.json') bag.timeMeta = file;
     }
 
     const candidates = [];
@@ -196,6 +240,9 @@ export function handleFileDrop(context) {
       databaseFile: chosen.database,
       rigsFile: chosen.rigs,
       framesFile: chosen.frames,
+      timesFile: chosen.times,
+      pointsTFile: chosen.pointsT,
+      timeMetaFile: chosen.timeMeta,
     };
   }
 
@@ -473,10 +520,16 @@ export function handleFileDrop(context) {
       pointCloudAverageError = cnt > 0 ? sum / cnt : 0;
     }
 
+    // Per-image / per-point `t` already rode the {...image}/{...point} spreads in the remap
+    // clones; carry the top-level time_meta from the first visible entry that has one.
+    const mergedTimeMeta = visible.find((e) => e.parsedBundle?.colmapData?.timeMeta)
+      ?.parsedBundle?.colmapData?.timeMeta ?? null;
+
     const colmapDataMerged = {
       cameras: mergedCameras,
       images: mergedImages,
       ...(mergedPointCloud.size > 0 && { pointCloud: mergedPointCloud }),
+      ...(mergedTimeMeta && { timeMeta: mergedTimeMeta }),
       pointCloudPointCount: mergedPointCloud.size,
       pointCloudTotalObservations: statsResult.pointCloudTotalObservations,
       pointCloudAverageError,
@@ -585,6 +638,7 @@ export function handleFileDrop(context) {
     }
 
     const pointCloud = points3D || null;
+    const timeMeta = await loadSidecarsAndJoin(chosen, images, pointCloud);
     let pointCloudAverageError = 0;
     if (pointCloud && pointCloud.size > 0) {
       let sum = 0;
@@ -602,6 +656,7 @@ export function handleFileDrop(context) {
       cameras,
       images,
       ...(pointCloud && pointCloud.size > 0 && { pointCloud }),
+      ...(timeMeta && { timeMeta }),
       rigData,
       pointCloudPointCount: pointCloud?.size ?? 0,
       pointCloudTotalObservations: statsResult.pointCloudTotalObservations,
@@ -783,6 +838,7 @@ export function handleFileDrop(context) {
       }
 
       const pointCloud = points3D || null;
+      const timeMeta = await loadSidecarsAndJoin(chosen, images, pointCloud);
       const pointCloudPointCount = pointCloud?.size ?? 0;
       let pointCloudAverageError = 0;
       if (pointCloud && pointCloud.size > 0) {
@@ -797,6 +853,7 @@ export function handleFileDrop(context) {
         cameras,
         images,
         ...(pointCloud && pointCloud.size > 0 && { pointCloud }),
+        ...(timeMeta && { timeMeta }),
         rigData,
         pointCloudPointCount,
         pointCloudTotalObservations,

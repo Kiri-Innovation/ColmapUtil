@@ -4,6 +4,7 @@
  */
 
 import * as decodeBinary from './decode/binary.js';
+import * as decodeSidecar from './decode/sidecar.js';
 import * as decodeText from './decode/text.js';
 
 export const parseCamerasBinary = decodeBinary.decodeCamerasFromBuffer;
@@ -27,3 +28,10 @@ export const decodeRigsFromBinary = parseRigsBinary;
 export const decodeRigsFromText = parseRigsText;
 export const decodeFramesFromBinary = parseFramesBinary;
 export const decodeFramesFromText = parseFramesText;
+
+// colmap4d time sidecars
+export const parseTimesBinary = decodeSidecar.decodeTimesFromBuffer;
+export const parseTimesText = decodeSidecar.decodeTimesFromString;
+export const parsePointsTBinary = decodeSidecar.decodePointsTFromBuffer;
+export const parsePointsTText = decodeSidecar.decodePointsTFromString;
+export const parseTimeMetaText = decodeSidecar.decodeTimeMetaFromString;

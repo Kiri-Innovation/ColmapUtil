@@ -24,4 +24,9 @@ export {
   decodeRigsFromText,
   decodeFramesFromBinary,
   decodeFramesFromText,
+  parseTimesBinary,
+  parseTimesText,
+  parsePointsTBinary,
+  parsePointsTText,
+  parseTimeMetaText,
 } from '../load.js';

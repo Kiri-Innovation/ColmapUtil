@@ -22,6 +22,10 @@ const DEFAULTS = {
     errorGamma: 1.0,
     trackLengthGamma: 1.0,
     showPointCloud: true,
+    // colmap4d point-cloud time filtering path: 'cpu' (rebuild buffers per scrub) or
+    // 'gpu' (upload per-point time once, shader discards out-of-window). Default 'cpu'
+    // so behavior is unchanged unless explicitly opted in.
+    renderMode: 'cpu',
   },
   camera: {
     cameraDisplayMode: 'on',
@@ -89,6 +93,7 @@ const DEFAULTS = {
     posFrac: 0,
     sigmaFrac: 0.1,
     epsilonFrac: 0.1,
+    softFrac: 0, // B3 soft-kernel band width (fraction of range); 0 = hard window (GPU path)
   },
 };
 

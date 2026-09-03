@@ -1329,6 +1329,8 @@ function TimeScrubberBar() {
   const [posFrac, setPosFrac] = useSetting('time', 'posFrac');
   const [sigmaFrac, setSigmaFrac] = useSetting('time', 'sigmaFrac');
   const [epsilonFrac, setEpsilonFrac] = useSetting('time', 'epsilonFrac');
+  const [softFrac, setSoftFrac] = useSetting('time', 'softFrac');
+  const [renderMode, setRenderMode] = useSetting('pointCloud', 'renderMode');
 
   if (!range.hasTime) return null;
 
@@ -1399,6 +1401,32 @@ function TimeScrubberBar() {
             style={{ width: '54px' }}
           />
           % ({epsMs.toFixed(1)} ms)
+        </label>
+        {renderMode === 'gpu' && (
+          <label style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            soft +
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              value={+(softFrac * 100).toFixed(2)}
+              onChange={(e) => setSoftFrac(clampFrac(e.target.value))}
+              style={{ width: '54px' }}
+            />
+            %
+          </label>
+        )}
+        <label style={{ display: 'flex', gap: '4px', alignItems: 'center', marginLeft: 'auto' }}>
+          points
+          <select
+            value={renderMode}
+            onChange={(e) => setRenderMode(e.target.value)}
+            style={{ background: '#1e1e20', color: '#ddd', border: '1px solid #444' }}
+          >
+            <option value="cpu">CPU</option>
+            <option value="gpu">GPU</option>
+          </select>
         </label>
       </div>
     </div>

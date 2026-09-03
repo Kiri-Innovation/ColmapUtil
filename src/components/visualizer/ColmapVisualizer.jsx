@@ -18,6 +18,7 @@ import {
   Camera,
   createPointCloudObject,
   createPointCloudBuffers,
+  rebaseToSecondsF32,
   createLinesObject,
   updateLinesObject,
   MaterialFactory,
@@ -130,10 +131,12 @@ export function ColmapVisualizer() {
   const [colorMode] = useSetting('pointCloud', 'colorMode');
   const [errorGamma] = useSetting('pointCloud', 'errorGamma');
   const [trackLengthGamma] = useSetting('pointCloud', 'trackLengthGamma');
+  const [renderMode] = useSetting('pointCloud', 'renderMode'); // 'cpu' | 'gpu' (colmap4d time path)
   // colmap4d time axis (fractions of the model time range)
   const [timePosFrac] = useSetting('time', 'posFrac');
   const [timeSigmaFrac] = useSetting('time', 'sigmaFrac');
   const [timeEpsilonFrac] = useSetting('time', 'epsilonFrac');
+  const [timeSoftFrac] = useSetting('time', 'softFrac'); // B3 GPU soft-kernel band
 
   // Colmap data (Context)
   const { colmapData, loadedFiles } = useAppContext();
@@ -480,8 +483,10 @@ export function ColmapVisualizer() {
     return colmapData.pointCloudIdsByImage.get(selectedImageId) ?? new Set();
   }, [colmapData, selectedImageId]);
 
-  // Point cloud: split unselected vs selected; color by colorMode (rgb / error / trackLength)
-  const pointCloudData = useMemo(() => {
+  // Base point cloud: full arrays + split by selection + per-point rebased-seconds time
+  // (−1 = temporally-unbounded). NO time filtering here and NO scrubber deps, so the heavy
+  // buffer build does NOT re-run when the scrubber moves (that is what the GPU path needs).
+  const basePointData = useMemo(() => {
     if (!colmapData) {
       return {
         unselectedPositions: null,
@@ -514,8 +519,10 @@ export function ColmapVisualizer() {
     allErrors = new Float32Array(n);
     allTrackLengths = new Uint32Array(n);
     allPoint3DIds = new Array(n);
-    // Per-point time (ns as Number; NaN = temporally-unbounded / no timestamp = always shown).
-    const allTimes = new Float64Array(n);
+    // Per-point time as float32 relative seconds (t − t0)/1e9; −1 = temporally-unbounded
+    // (always shown). Same encoding the GPU shader expects (POINT_TIME_TIMELESS = −1).
+    const t0Ns = timeRange.minNs;
+    const allTimes = new Float32Array(n);
     let i = 0;
     for (const p of pointCloud.values()) {
       allPositions[i * 3] = p.xyz[0];
@@ -527,7 +534,7 @@ export function ColmapVisualizer() {
       allErrors[i] = p.error ?? 0;
       allTrackLengths[i] = p.track?.length ?? 0;
       allPoint3DIds[i] = p.point3DId;
-      allTimes[i] = p.t === null || p.t === undefined ? NaN : Number(p.t);
+      allTimes[i] = rebaseToSecondsF32(p.t, t0Ns);
       i++;
     }
 
@@ -620,30 +627,25 @@ export function ColmapVisualizer() {
 
     const unselectedPositions = [];
     const unselectedColors = [];
+    const unselectedTimes = [];
     const selectedPositions = [];
     const selectedColors = [];
+    const selectedTimes = [];
 
     const hasSelection = selectedImageId !== null && selectedImagePointIds.size > 0;
 
     for (let i = 0; i < pointCount; i++) {
       const point3DId = allPoint3DIds ? allPoint3DIds[i] : BigInt(i + 1);
-
-      // colmap4d time filter: drop points outside |t - current| <= sigma. Points with no
-      // timestamp (NaN = temporally-unbounded) are always kept.
-      if (timeActive) {
-        const tv = allTimes[i];
-        if (!Number.isNaN(tv) && Math.abs(tv - currentNs) > pointSigmaNs) continue;
-      }
-
       const isSelected = hasSelection && selectedImagePointIds.has(point3DId);
 
       const posBase = i * 3;
       const position = [allPositions[posBase], allPositions[posBase + 1], allPositions[posBase + 2]];
       const colorBase = i * 3;
-      
+
       if (isSelected || !hasSelection) {
         selectedPositions.push(...position);
         selectedColors.push(allColors[colorBase], allColors[colorBase + 1], allColors[colorBase + 2]);
+        selectedTimes.push(allTimes[i]);
       } else {
         unselectedPositions.push(...position);
         unselectedColors.push(
@@ -651,15 +653,18 @@ export function ColmapVisualizer() {
           allColors[colorBase + 1] * UNSELECTED_POINT_COLOR_MULTIPLIER,  // G * multiplier
           allColors[colorBase + 2] * UNSELECTED_POINT_COLOR_MULTIPLIER   // B * multiplier
         );
+        unselectedTimes.push(allTimes[i]);
       }
     }
 
     return {
-      // Split data for rendering
+      // Split data for rendering (unfiltered; times in rebased seconds, −1 = timeless)
       unselectedPositions: unselectedPositions.length > 0 ? new Float32Array(unselectedPositions) : null,
       unselectedColors: unselectedColors.length > 0 ? new Float32Array(unselectedColors) : null,
+      unselectedTimes: unselectedTimes.length > 0 ? new Float32Array(unselectedTimes) : null,
       selectedPositions: selectedPositions.length > 0 ? new Float32Array(selectedPositions) : null,
       selectedColors: selectedColors.length > 0 ? new Float32Array(selectedColors) : null,
+      selectedTimes: selectedTimes.length > 0 ? new Float32Array(selectedTimes) : null,
       // Full data for hover (preserve indices)
       positions: allPositions,
       colors: allColors,
@@ -667,49 +672,91 @@ export function ColmapVisualizer() {
       errors: allErrors,
       trackLengths: allTrackLengths,
     };
-  }, [colmapData, selectedImagePointIds, colorMode, errorGamma, trackLengthGamma, timeActive, currentNs, pointSigmaNs]);
+  }, [colmapData, selectedImagePointIds, colorMode, errorGamma, trackLengthGamma, timeRange.minNs]);
+
+  // Final point data the buffers consume. GPU mode (or no time): pass base through unchanged
+  // (stable reference ⇒ no re-upload while scrubbing; the shader discards out-of-window points).
+  // CPU mode: rebuild the split arrays dropping out-of-window points (points with time −1 are
+  // temporally-unbounded and always kept). Window is in rebased seconds to match basePointData.
+  const pointCloudData = useMemo(() => {
+    if (renderMode === 'gpu' || !timeActive) return basePointData;
+    const curSec = (currentNs - timeRange.minNs) / 1e9;
+    const sigSec = pointSigmaNs / 1e9;
+    const filterSplit = (positions, colors, times) => {
+      if (!positions || !times) return { positions, colors };
+      const outP = [];
+      const outC = [];
+      for (let i = 0; i < times.length; i++) {
+        const t = times[i];
+        if (t >= 0 && Math.abs(t - curSec) > sigSec) continue;
+        outP.push(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+        outC.push(colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]);
+      }
+      return {
+        positions: outP.length > 0 ? new Float32Array(outP) : null,
+        colors: outC.length > 0 ? new Float32Array(outC) : null,
+      };
+    };
+    const uns = filterSplit(basePointData.unselectedPositions, basePointData.unselectedColors, basePointData.unselectedTimes);
+    const sel = filterSplit(basePointData.selectedPositions, basePointData.selectedColors, basePointData.selectedTimes);
+    return {
+      ...basePointData,
+      unselectedPositions: uns.positions,
+      unselectedColors: uns.colors,
+      selectedPositions: sel.positions,
+      selectedColors: sel.colors,
+    };
+  }, [basePointData, renderMode, timeActive, currentNs, pointSigmaNs, timeRange.minNs]);
 
   // Update unselected point cloud
   useEffect(() => {
     const obj = pointCloudObjRef.current;
     if (!obj || !gl) return;
-    const { unselectedPositions, unselectedColors } = pointCloudData;
+    const { unselectedPositions, unselectedColors, unselectedTimes } = pointCloudData;
     if (!unselectedPositions || !unselectedColors || !showPointCloud) {
       if (obj.pointPositionBuffer) { gl.deleteBuffer(obj.pointPositionBuffer); obj.pointPositionBuffer = null; }
       if (obj.pointColorBuffer) { gl.deleteBuffer(obj.pointColorBuffer); obj.pointColorBuffer = null; }
+      if (obj.pointTimeBuffer) { gl.deleteBuffer(obj.pointTimeBuffer); obj.pointTimeBuffer = null; }
       obj.pointCount = 0;
       obj.ready = false;
       return;
     }
-    const { pointPositionBuffer, pointColorBuffer, pointCount } = createPointCloudBuffers(gl, unselectedPositions, unselectedColors);
+    const times = renderMode === 'gpu' ? unselectedTimes : null;
+    const { pointPositionBuffer, pointColorBuffer, pointTimeBuffer, pointCount } = createPointCloudBuffers(gl, unselectedPositions, unselectedColors, times);
     if (obj.pointPositionBuffer) gl.deleteBuffer(obj.pointPositionBuffer);
     if (obj.pointColorBuffer) gl.deleteBuffer(obj.pointColorBuffer);
+    if (obj.pointTimeBuffer) gl.deleteBuffer(obj.pointTimeBuffer);
     obj.pointPositionBuffer = pointPositionBuffer;
     obj.pointColorBuffer = pointColorBuffer;
+    obj.pointTimeBuffer = pointTimeBuffer;
     obj.pointCount = pointCount;
     obj.ready = pointCount > 0;
-  }, [gl, pointCloudData, showPointCloud]);
+  }, [gl, pointCloudData, showPointCloud, renderMode]);
 
   // Update selected point cloud
   useEffect(() => {
     const obj = selectedPointCloudObjRef.current;
     if (!obj || !gl) return;
-    const { selectedPositions, selectedColors } = pointCloudData;
+    const { selectedPositions, selectedColors, selectedTimes } = pointCloudData;
     if (!selectedPositions || !selectedColors || !showPointCloud) {
       if (obj.pointPositionBuffer) { gl.deleteBuffer(obj.pointPositionBuffer); obj.pointPositionBuffer = null; }
       if (obj.pointColorBuffer) { gl.deleteBuffer(obj.pointColorBuffer); obj.pointColorBuffer = null; }
+      if (obj.pointTimeBuffer) { gl.deleteBuffer(obj.pointTimeBuffer); obj.pointTimeBuffer = null; }
       obj.pointCount = 0;
       obj.ready = false;
       return;
     }
-    const { pointPositionBuffer, pointColorBuffer, pointCount } = createPointCloudBuffers(gl, selectedPositions, selectedColors);
+    const times = renderMode === 'gpu' ? selectedTimes : null;
+    const { pointPositionBuffer, pointColorBuffer, pointTimeBuffer, pointCount } = createPointCloudBuffers(gl, selectedPositions, selectedColors, times);
     if (obj.pointPositionBuffer) gl.deleteBuffer(obj.pointPositionBuffer);
     if (obj.pointColorBuffer) gl.deleteBuffer(obj.pointColorBuffer);
+    if (obj.pointTimeBuffer) gl.deleteBuffer(obj.pointTimeBuffer);
     obj.pointPositionBuffer = pointPositionBuffer;
     obj.pointColorBuffer = pointColorBuffer;
+    obj.pointTimeBuffer = pointTimeBuffer;
     obj.pointCount = pointCount;
     obj.ready = pointCount > 0;
-  }, [gl, pointCloudData, showPointCloud]);
+  }, [gl, pointCloudData, showPointCloud, renderMode]);
 
   useEffect(() => {
     const obj = pointCloudObjRef.current;
@@ -719,6 +766,26 @@ export function ColmapVisualizer() {
     obj.pointSize = size;
     selectedObj.pointSize = size;
   }, [pointSize]);
+
+  // GPU time gating uniforms (colmap4d): drive obj.timeCurrent/timeSigma each scrub tick.
+  // The continuous RAF loop reads these next frame, so no per-frame JS work. In CPU mode
+  // (or no time) timeEnabled=false ⇒ shader is bit-identical to the pre-4D path (zero regression).
+  useEffect(() => {
+    const obj = pointCloudObjRef.current;
+    const selectedObj = selectedPointCloudObjRef.current;
+    if (!obj || !selectedObj) return;
+    const gpuTime = renderMode === 'gpu' && timeActive;
+    const currentSec = (currentNs - timeRange.minNs) / 1e9;
+    const sigmaSec = pointSigmaNs / 1e9;
+    const span = Math.max(0, timeRange.maxNs - timeRange.minNs);
+    const softSec = (timeSoftFrac * span) / 1e9;
+    for (const o of [obj, selectedObj]) {
+      o.timeEnabled = gpuTime;
+      o.timeCurrent = currentSec;
+      o.timeSigma = sigmaSec;
+      o.timeSoftSigma = softSec;
+    }
+  }, [renderMode, timeActive, currentNs, pointSigmaNs, timeSoftFrac, timeRange.minNs, timeRange.maxNs]);
 
   const imageFrameIndexMap = useMemo(() => {
     const m = new Map();

@@ -10,6 +10,7 @@ export const STORAGE_KEYS = {
   ui: 'colmap-util-ui',
   export: 'colmap-util-export',
   rig: 'colmap-util-rig',
+  time: 'colmap-util-time',
 };
 
 const DEFAULTS = {
@@ -81,6 +82,13 @@ const DEFAULTS = {
     rigDisplayMode: 'lines',
     rigLineColor: '#00ffff',
     rigLineOpacity: 0.7,
+  },
+  // colmap4d time axis (fractions of the model's [minT, maxT] range, so defaults are
+  // dataset-independent). posFrac = scrubber position; sigma/epsilon = half-window widths.
+  time: {
+    posFrac: 0,
+    sigmaFrac: 0.1,
+    epsilonFrac: 0.1,
   },
 };
 
@@ -199,6 +207,7 @@ export const settings = {
   ui: createSettingsSection('ui', DEFAULTS.ui),
   export: createSettingsSection('export', DEFAULTS.export),
   rig: createSettingsSection('rig', DEFAULTS.rig),
+  time: createSettingsSection('time', DEFAULTS.time),
 };
 
 export { DEFAULTS };

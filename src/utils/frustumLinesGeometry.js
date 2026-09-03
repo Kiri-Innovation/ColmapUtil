@@ -21,7 +21,8 @@ function hexToRgb(hex) {
     : null;
 }
 
-/** options: cameraScale, selectedImageId, hoveredImageId, matchedImageIds, frustumColorMode, imageFrameIndexMap. */
+/** options: cameraScale, selectedImageId, hoveredImageId, matchedImageIds, frustumColorMode,
+ *  imageFrameIndexMap, currentTimeNs, epsilonNs (colmap4d time gating). */
 export function buildFrustumLinesGeometry(frustumsData, options = {}) {
   const {
     cameraScale = 1.0,
@@ -30,7 +31,10 @@ export function buildFrustumLinesGeometry(frustumsData, options = {}) {
     matchedImageIds = new Set(),
     frustumColorMode = 'single',
     imageFrameIndexMap = new Map(),
+    currentTimeNs = null,
+    epsilonNs = Infinity,
   } = options;
+  const timeGating = currentTimeNs !== null && Number.isFinite(epsilonNs);
 
   const positions = [];
   const colors = [];
@@ -44,6 +48,15 @@ export function buildFrustumLinesGeometry(frustumsData, options = {}) {
     const image = f.image;
     const position = f.position;
     const quaternion = f.quaternion;
+
+    // colmap4d time gating: hide cameras outside |t - current| <= epsilon.
+    // Timeless images (t == null/undefined) are always shown.
+    if (timeGating) {
+      const t = image.t;
+      if (t !== null && t !== undefined && Math.abs(Number(t) - currentTimeNs) > epsilonNs) {
+        continue;
+      }
+    }
 
     let baseColorHex;
     if (frustumColorMode === 'byCamera') {

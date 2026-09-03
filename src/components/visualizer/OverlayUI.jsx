@@ -10,6 +10,7 @@ import { getTooltipProps } from '../../utils/tooltip';
 import { saveColmapAsZip } from '../../codec/export/exportingUtils.js';
 import { buildImageFilesForExport } from '../../utils/imageFileUtils.js';
 import { interpolateColor } from '../../utils/colorUtils';
+import { computeTimeRange } from '../../utils/timeAxis';
 import { Download, Move, Image, Eye, Settings, ChevronDown, Check, MoreVertical } from 'lucide-react';
 import { FrustumWireframeIcon } from '../../assets/custom_icons';
 import { SliderRow } from '../common/SliderRow.jsx';
@@ -1317,6 +1318,93 @@ function SettingsButton() {
 }
 
 // Main control bar
+/**
+ * colmap4d time scrubber — flat bottom-center bar, shown only when the model carries time.
+ * Position/window are stored as fractions of the model time range (settings.time); the
+ * visualizer reads the same settings and does the CPU point/camera filtering.
+ */
+function TimeScrubberBar() {
+  const { colmapData } = useAppContext();
+  const range = useMemo(() => computeTimeRange(colmapData), [colmapData]);
+  const [posFrac, setPosFrac] = useSetting('time', 'posFrac');
+  const [sigmaFrac, setSigmaFrac] = useSetting('time', 'sigmaFrac');
+  const [epsilonFrac, setEpsilonFrac] = useSetting('time', 'epsilonFrac');
+
+  if (!range.hasTime) return null;
+
+  const span = range.maxNs - range.minNs;
+  const totalSec = span / 1e9;
+  const currentRelSec = (posFrac * span) / 1e9;
+  const sigmaMs = (sigmaFrac * span) / 1e6;
+  const epsMs = (epsilonFrac * span) / 1e6;
+  const clampFrac = (v) => Math.max(0, Math.min(1, (parseFloat(v) || 0) / 100));
+
+  const barStyle = {
+    position: 'absolute',
+    bottom: '12px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 1000,
+    pointerEvents: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px',
+    padding: '10px 14px',
+    width: 'min(560px, 80vw)',
+    background: 'rgba(30,30,32,0.92)',
+    border: '1px solid #444',
+    borderRadius: '4px',
+    color: '#ddd',
+    font: '12px system-ui, sans-serif',
+  };
+
+  return (
+    <div style={barStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <span>Time (colmap4d)</span>
+        <span>{currentRelSec.toFixed(3)} / {totalSec.toFixed(3)} s</span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.001}
+        value={posFrac}
+        onChange={(e) => setPosFrac(parseFloat(e.target.value))}
+        style={{ width: '100%' }}
+      />
+      <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+        <label style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          σ points ±
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={0.5}
+            value={+(sigmaFrac * 100).toFixed(2)}
+            onChange={(e) => setSigmaFrac(clampFrac(e.target.value))}
+            style={{ width: '54px' }}
+          />
+          % ({sigmaMs.toFixed(1)} ms)
+        </label>
+        <label style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          ε cams ±
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={0.5}
+            value={+(epsilonFrac * 100).toFixed(2)}
+            onChange={(e) => setEpsilonFrac(clampFrac(e.target.value))}
+            style={{ width: '54px' }}
+          />
+          % ({epsMs.toFixed(1)} ms)
+        </label>
+      </div>
+    </div>
+  );
+}
+
 export function OverlayUI() {
   const { currentPanel, openPanel } = usePanelState();
   const { colmapData } = useAppContext();
@@ -1398,6 +1486,9 @@ export function OverlayUI() {
         
         <SettingsButton />
       </div>
+
+      {/* colmap4d time scrubber (only when the model carries timestamps) */}
+      <TimeScrubberBar />
     </>
   );
 }

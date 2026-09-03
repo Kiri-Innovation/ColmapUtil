@@ -25,6 +25,7 @@ import {
 import { ColmapCanvasRenderTarget } from './colmapRenderTarget';
 import { buildFrustumLinesGeometry } from '@/utils/frustumLinesGeometry';
 import { buildImagePlaneMeshObjects } from '@/utils/imagePlaneMeshObjects';
+import { computeTimeRange, resolveTimeWindow } from '@/utils/timeAxis';
 import { OverlayUI } from './OverlayUI';
 import { useAppContext, useSelection, useNavigation, useUI } from '@/AppContext';
 import { useSetting, settings } from '../../utils/settings';
@@ -129,11 +130,28 @@ export function ColmapVisualizer() {
   const [colorMode] = useSetting('pointCloud', 'colorMode');
   const [errorGamma] = useSetting('pointCloud', 'errorGamma');
   const [trackLengthGamma] = useSetting('pointCloud', 'trackLengthGamma');
-  
+  // colmap4d time axis (fractions of the model time range)
+  const [timePosFrac] = useSetting('time', 'posFrac');
+  const [timeSigmaFrac] = useSetting('time', 'sigmaFrac');
+  const [timeEpsilonFrac] = useSetting('time', 'epsilonFrac');
+
   // Colmap data (Context)
   const { colmapData, loadedFiles } = useAppContext();
   /** false = NoImage / 仅有 sparse、无栅格图：不显视锥图像平面、不解码纹理 */
   const frustumRasterOk = loadedFiles?.canResolveRasterImages !== false;
+
+  // colmap4d time window (CPU-side): derive absolute ns from stored fractions + model range.
+  const timeRange = useMemo(() => computeTimeRange(colmapData), [colmapData]);
+  const { currentNs, pointSigmaNs, cameraEpsNs } = useMemo(
+    () =>
+      resolveTimeWindow(timeRange, {
+        posFrac: timePosFrac,
+        sigmaFrac: timeSigmaFrac,
+        epsilonFrac: timeEpsilonFrac,
+      }),
+    [timeRange, timePosFrac, timeSigmaFrac, timeEpsilonFrac]
+  );
+  const timeActive = timeRange.hasTime;
   
   // Temporary UI state
   const [hoveredImageId, setHoveredImageId] = useState(null);
@@ -496,6 +514,8 @@ export function ColmapVisualizer() {
     allErrors = new Float32Array(n);
     allTrackLengths = new Uint32Array(n);
     allPoint3DIds = new Array(n);
+    // Per-point time (ns as Number; NaN = temporally-unbounded / no timestamp = always shown).
+    const allTimes = new Float64Array(n);
     let i = 0;
     for (const p of pointCloud.values()) {
       allPositions[i * 3] = p.xyz[0];
@@ -507,6 +527,7 @@ export function ColmapVisualizer() {
       allErrors[i] = p.error ?? 0;
       allTrackLengths[i] = p.track?.length ?? 0;
       allPoint3DIds[i] = p.point3DId;
+      allTimes[i] = p.t === null || p.t === undefined ? NaN : Number(p.t);
       i++;
     }
 
@@ -606,8 +627,16 @@ export function ColmapVisualizer() {
 
     for (let i = 0; i < pointCount; i++) {
       const point3DId = allPoint3DIds ? allPoint3DIds[i] : BigInt(i + 1);
+
+      // colmap4d time filter: drop points outside |t - current| <= sigma. Points with no
+      // timestamp (NaN = temporally-unbounded) are always kept.
+      if (timeActive) {
+        const tv = allTimes[i];
+        if (!Number.isNaN(tv) && Math.abs(tv - currentNs) > pointSigmaNs) continue;
+      }
+
       const isSelected = hasSelection && selectedImagePointIds.has(point3DId);
-      
+
       const posBase = i * 3;
       const position = [allPositions[posBase], allPositions[posBase + 1], allPositions[posBase + 2]];
       const colorBase = i * 3;
@@ -638,7 +667,7 @@ export function ColmapVisualizer() {
       errors: allErrors,
       trackLengths: allTrackLengths,
     };
-  }, [colmapData, selectedImagePointIds, colorMode, errorGamma, trackLengthGamma]);
+  }, [colmapData, selectedImagePointIds, colorMode, errorGamma, trackLengthGamma, timeActive, currentNs, pointSigmaNs]);
 
   // Update unselected point cloud
   useEffect(() => {
@@ -753,9 +782,11 @@ export function ColmapVisualizer() {
       matchedImageIds: new Set(),
       frustumColorMode,
       imageFrameIndexMap,
+      currentTimeNs: timeActive ? currentNs : null,
+      epsilonNs: timeActive ? cameraEpsNs : Infinity,
     });
     updateLinesObject(gl, linesObj, positions, colors);
-  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, hoveredImageId, matchedCameraIds, frustumColorMode, imageFrameIndexMap]);
+  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, hoveredImageId, matchedCameraIds, frustumColorMode, imageFrameIndexMap, timeActive, currentNs, cameraEpsNs]);
 
   // Update matched camera frustums (white, alpha 0.5)
   useEffect(() => {

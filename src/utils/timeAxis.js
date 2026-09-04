@@ -26,13 +26,18 @@ export function computeTimeRange(colmapData) {
   return { hasTime: has, minNs: min ?? 0, maxNs: max ?? 0 };
 }
 
-/** Convert stored fractions + a range into absolute ns window used by the CPU filters. */
+/**
+ * Convert stored fractions + a range into the absolute ns window. Cameras (frustum lines and
+ * image planes) share the SAME window as points — pointSigmaNs — so the whole camera
+ * representation lives and dies with the point cloud on the time axis. pointSoftNs is the B3
+ * soft-ramp band width (0 = hard cutoff).
+ */
 export function resolveTimeWindow(range, fractions) {
   const span = Math.max(0, (range?.maxNs ?? 0) - (range?.minNs ?? 0));
   return {
     span,
     currentNs: (range?.minNs ?? 0) + (fractions?.posFrac ?? 0) * span,
     pointSigmaNs: (fractions?.sigmaFrac ?? 0) * span,
-    cameraEpsNs: (fractions?.epsilonFrac ?? 0) * span,
+    pointSoftNs: (fractions?.softFrac ?? 0) * span,
   };
 }

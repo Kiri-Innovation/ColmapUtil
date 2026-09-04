@@ -22,7 +22,9 @@ function hexToRgb(hex) {
 }
 
 /** options: cameraScale, selectedImageId, hoveredImageId, matchedImageIds, frustumColorMode,
- *  imageFrameIndexMap, currentTimeNs, epsilonNs (colmap4d time gating). */
+ *  imageFrameIndexMap, currentTimeNs, sigmaNs, softNs (colmap4d time gating — cameras share the
+ *  point cloud's window: sigmaNs = point sigma, softNs = soft-ramp band; selected/hovered/matched
+ *  cameras are never gated). */
 export function buildFrustumLinesGeometry(frustumsData, options = {}) {
   const {
     cameraScale = 1.0,
@@ -32,9 +34,10 @@ export function buildFrustumLinesGeometry(frustumsData, options = {}) {
     frustumColorMode = 'single',
     imageFrameIndexMap = new Map(),
     currentTimeNs = null,
-    epsilonNs = Infinity,
+    sigmaNs = Infinity,
+    softNs = 0,
   } = options;
-  const timeGating = currentTimeNs !== null && Number.isFinite(epsilonNs);
+  const timeGating = currentTimeNs !== null && Number.isFinite(sigmaNs);
 
   const positions = [];
   const colors = [];
@@ -48,15 +51,6 @@ export function buildFrustumLinesGeometry(frustumsData, options = {}) {
     const image = f.image;
     const position = f.position;
     const quaternion = f.quaternion;
-
-    // colmap4d time gating: hide cameras outside |t - current| <= epsilon.
-    // Timeless images (t == null/undefined) are always shown.
-    if (timeGating) {
-      const t = image.t;
-      if (t !== null && t !== undefined && Math.abs(Number(t) - currentTimeNs) > epsilonNs) {
-        continue;
-      }
-    }
 
     let baseColorHex;
     if (frustumColorMode === 'byCamera') {
@@ -96,10 +90,24 @@ export function buildFrustumLinesGeometry(frustumsData, options = {}) {
       else opacity = 0.5;
     }
 
-    // matched: white; alpha via shader uniform. others: color * opacity.
-    const r = Math.max(0, Math.min(1, finalColor.r * (isMatched ? 1.0 : opacity)));
-    const g = Math.max(0, Math.min(1, finalColor.g * (isMatched ? 1.0 : opacity)));
-    const b = Math.max(0, Math.min(1, finalColor.b * (isMatched ? 1.0 : opacity)));
+    // colmap4d time gating: cameras share the point cloud window (sigmaNs). Selected / hovered /
+    // matched cameras are NEVER gated (interaction floor). Timeless images (t == null) always show.
+    // Soft band [sigmaNs, sigmaNs+softNs] fades opacity to 0 (matches the point soft ramp).
+    let timeWeight = 1.0;
+    if (timeGating && !isSelected && !isHovered && !isMatched) {
+      const t = image.t;
+      if (t !== null && t !== undefined) {
+        const d = Math.abs(Number(t) - currentTimeNs);
+        const outer = sigmaNs + softNs;
+        if (d > outer) continue; // fully outside → hide
+        if (softNs > 0 && d > sigmaNs) timeWeight = (outer - d) / softNs;
+      }
+    }
+
+    // matched: white; alpha via shader uniform. others: color * opacity * time weight.
+    const r = Math.max(0, Math.min(1, finalColor.r * (isMatched ? 1.0 : opacity) * timeWeight));
+    const g = Math.max(0, Math.min(1, finalColor.g * (isMatched ? 1.0 : opacity) * timeWeight));
+    const b = Math.max(0, Math.min(1, finalColor.b * (isMatched ? 1.0 : opacity) * timeWeight));
 
     const focalLength = camera.params[0] || 1;
     const aspectRatio = camera.width / camera.height;

@@ -91,9 +91,11 @@ const DEFAULTS = {
   // dataset-independent). posFrac = scrubber position; sigma/epsilon = half-window widths.
   time: {
     posFrac: 0,
+    // Single shared window half-width (fraction of range) for BOTH points and cameras, so the
+    // whole camera representation lives and dies with the point cloud. (Replaces the former
+    // separate camera `epsilonFrac`, removed; any stale stored value is ignored by getAll.)
     sigmaFrac: 0.1,
-    epsilonFrac: 0.1,
-    softFrac: 0, // B3 soft-kernel band width (fraction of range); 0 = hard window (GPU path)
+    softFrac: 0, // soft-ramp band width (fraction of range); 0 = hard window
   },
 };
 

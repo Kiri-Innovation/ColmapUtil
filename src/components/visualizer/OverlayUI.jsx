@@ -1328,7 +1328,6 @@ function TimeScrubberBar() {
   const range = useMemo(() => computeTimeRange(colmapData), [colmapData]);
   const [posFrac, setPosFrac] = useSetting('time', 'posFrac');
   const [sigmaFrac, setSigmaFrac] = useSetting('time', 'sigmaFrac');
-  const [epsilonFrac, setEpsilonFrac] = useSetting('time', 'epsilonFrac');
   const [softFrac, setSoftFrac] = useSetting('time', 'softFrac');
   const [renderMode, setRenderMode] = useSetting('pointCloud', 'renderMode');
 
@@ -1338,7 +1337,6 @@ function TimeScrubberBar() {
   const totalSec = span / 1e9;
   const currentRelSec = (posFrac * span) / 1e9;
   const sigmaMs = (sigmaFrac * span) / 1e6;
-  const epsMs = (epsilonFrac * span) / 1e6;
   const clampFrac = (v) => Math.max(0, Math.min(1, (parseFloat(v) || 0) / 100));
 
   const barStyle = {
@@ -1377,7 +1375,7 @@ function TimeScrubberBar() {
       />
       <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
         <label style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-          σ points ±
+          σ window ±
           <input
             type="number"
             min={0}
@@ -1387,20 +1385,7 @@ function TimeScrubberBar() {
             onChange={(e) => setSigmaFrac(clampFrac(e.target.value))}
             style={{ width: '54px' }}
           />
-          % ({sigmaMs.toFixed(1)} ms)
-        </label>
-        <label style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-          ε cams ±
-          <input
-            type="number"
-            min={0}
-            max={100}
-            step={0.5}
-            value={+(epsilonFrac * 100).toFixed(2)}
-            onChange={(e) => setEpsilonFrac(clampFrac(e.target.value))}
-            style={{ width: '54px' }}
-          />
-          % ({epsMs.toFixed(1)} ms)
+          % ({sigmaMs.toFixed(1)} ms) — points + cameras
         </label>
         {renderMode === 'gpu' && (
           <label style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>

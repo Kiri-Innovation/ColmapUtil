@@ -134,9 +134,8 @@ export function ColmapVisualizer() {
   const [renderMode] = useSetting('pointCloud', 'renderMode'); // 'cpu' | 'gpu' (colmap4d time path)
   // colmap4d time axis (fractions of the model time range)
   const [timePosFrac] = useSetting('time', 'posFrac');
-  const [timeSigmaFrac] = useSetting('time', 'sigmaFrac');
-  const [timeEpsilonFrac] = useSetting('time', 'epsilonFrac');
-  const [timeSoftFrac] = useSetting('time', 'softFrac'); // B3 GPU soft-kernel band
+  const [timeSigmaFrac] = useSetting('time', 'sigmaFrac'); // shared window: points AND cameras
+  const [timeSoftFrac] = useSetting('time', 'softFrac');   // soft-ramp band (points + cameras)
 
   // Colmap data (Context)
   const { colmapData, loadedFiles } = useAppContext();
@@ -145,17 +144,20 @@ export function ColmapVisualizer() {
 
   // colmap4d time window (CPU-side): derive absolute ns from stored fractions + model range.
   const timeRange = useMemo(() => computeTimeRange(colmapData), [colmapData]);
-  const { currentNs, pointSigmaNs, cameraEpsNs } = useMemo(
+  const { currentNs, pointSigmaNs, pointSoftNs } = useMemo(
     () =>
       resolveTimeWindow(timeRange, {
         posFrac: timePosFrac,
         sigmaFrac: timeSigmaFrac,
-        epsilonFrac: timeEpsilonFrac,
+        softFrac: timeSoftFrac,
       }),
-    [timeRange, timePosFrac, timeSigmaFrac, timeEpsilonFrac]
+    [timeRange, timePosFrac, timeSigmaFrac, timeSoftFrac]
   );
   const timeActive = timeRange.hasTime;
-  
+  // Cameras share the point cloud's lifecycle: soft ramp only when points are also soft (GPU
+  // point path). In CPU point mode points hard-cut, so cameras hard-cut too (camSoftNs = 0).
+  const camSoftNs = renderMode === 'gpu' ? pointSoftNs : 0;
+
   // Temporary UI state
   const [hoveredImageId, setHoveredImageId] = useState(null);
   const [hoveredImageCardPos, setHoveredImageCardPos] = useState(null);
@@ -850,10 +852,11 @@ export function ColmapVisualizer() {
       frustumColorMode,
       imageFrameIndexMap,
       currentTimeNs: timeActive ? currentNs : null,
-      epsilonNs: timeActive ? cameraEpsNs : Infinity,
+      sigmaNs: timeActive ? pointSigmaNs : Infinity,
+      softNs: timeActive ? camSoftNs : 0,
     });
     updateLinesObject(gl, linesObj, positions, colors);
-  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, hoveredImageId, matchedCameraIds, frustumColorMode, imageFrameIndexMap, timeActive, currentNs, cameraEpsNs]);
+  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, hoveredImageId, matchedCameraIds, frustumColorMode, imageFrameIndexMap, timeActive, currentNs, pointSigmaNs, camSoftNs]);
 
   // Update matched camera frustums (white, alpha 0.5)
   useEffect(() => {
@@ -1004,7 +1007,22 @@ export function ColmapVisualizer() {
 
     if (!frustums.length) return;
 
-    const list = buildImagePlaneMeshObjects(gl, frustums, textureMapRef.current, {
+    // colmap4d time gating for image planes: share the point cloud window (pointSigmaNs), so
+    // planes live and die with the point cloud. Selected camera is always kept (interaction
+    // floor); timeless images always shown. Planes hard-cut at the outer edge (sigma+soft) so
+    // they persist through the frustum's soft fade. (Hovered out-of-window cameras still show
+    // their frustum outline via the lines effect; plane rebuild stays tied to selection only to
+    // avoid per-hover texture churn on large models.)
+    const planeFrustums = timeActive
+      ? frustums.filter((f) => {
+          if (f.image.imageId === selectedImageId) return true;
+          const t = f.image.t;
+          if (t === null || t === undefined) return true;
+          return Math.abs(Number(t) - currentNs) <= pointSigmaNs + camSoftNs;
+        })
+      : frustums;
+
+    const list = buildImagePlaneMeshObjects(gl, planeFrustums, textureMapRef.current, {
       cameraScale,
       selectedImageId,
       showImagePlane,
@@ -1046,7 +1064,7 @@ export function ColmapVisualizer() {
       map.set(imageId, { obj, texture });
     }
     return removeAll;
-  }, [gl, frustums, cameraScale, selectedImageId, showImagePlane, textureMapVersion, imageDetailId, showMatchesInModal, matchedImageId, frustumRasterOk]);
+  }, [gl, frustums, cameraScale, selectedImageId, showImagePlane, textureMapVersion, imageDetailId, showMatchesInModal, matchedImageId, frustumRasterOk, timeActive, currentNs, pointSigmaNs, camSoftNs]);
 
   // Hex color to RGB (0-1)
   const backgroundColorRgb = useMemo(() => {

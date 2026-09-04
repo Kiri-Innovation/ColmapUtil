@@ -636,15 +636,38 @@ export function ColmapVisualizer() {
 
     const hasSelection = selectedImageId !== null && selectedImagePointIds.size > 0;
 
+    // colmap4d: the "dim non-observed points" highlight is a covisibility feature that assumes
+    // one model. Per-frame imports don't share tracks across frames, so selecting any one frame's
+    // camera would dim EVERY other frame (the whole timeline goes dark). In timeActive mode, dim
+    // ONLY same-frame non-observed points; other frames (and timeless points) stay full brightness.
+    // (t0Ns is the rebase origin already computed above for allTimes.)
+    const selectedFrameSec =
+      hasSelection && timeActive
+        ? rebaseToSecondsF32(colmapData.images.get(selectedImageId)?.t, t0Ns)
+        : null;
+    const SAME_FRAME_TOL_SEC = 1e-3; // 1e6 ns; frames are ~33 ms apart, so this cleanly isolates one
+
     for (let i = 0; i < pointCount; i++) {
       const point3DId = allPoint3DIds ? allPoint3DIds[i] : BigInt(i + 1);
       const isSelected = hasSelection && selectedImagePointIds.has(point3DId);
+
+      // Decide whether this point is dimmed by the current selection.
+      let dim;
+      if (!hasSelection || isSelected) {
+        dim = false;
+      } else if (selectedFrameSec !== null) {
+        // timeActive: only dim points in the selected camera's own frame (timeless t < 0 → bright)
+        const t = allTimes[i];
+        dim = t >= 0 && Math.abs(t - selectedFrameSec) <= SAME_FRAME_TOL_SEC;
+      } else {
+        dim = true; // legacy single-model behavior (no time axis): dim all non-observed points
+      }
 
       const posBase = i * 3;
       const position = [allPositions[posBase], allPositions[posBase + 1], allPositions[posBase + 2]];
       const colorBase = i * 3;
 
-      if (isSelected || !hasSelection) {
+      if (!dim) {
         selectedPositions.push(...position);
         selectedColors.push(allColors[colorBase], allColors[colorBase + 1], allColors[colorBase + 2]);
         selectedTimes.push(allTimes[i]);
@@ -674,7 +697,7 @@ export function ColmapVisualizer() {
       errors: allErrors,
       trackLengths: allTrackLengths,
     };
-  }, [colmapData, selectedImagePointIds, colorMode, errorGamma, trackLengthGamma, timeRange.minNs]);
+  }, [colmapData, selectedImageId, selectedImagePointIds, timeActive, colorMode, errorGamma, trackLengthGamma, timeRange.minNs]);
 
   // Final point data the buffers consume. GPU mode (or no time): pass base through unchanged
   // (stable reference ⇒ no re-upload while scrubbing; the shader discards out-of-window points).

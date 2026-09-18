@@ -28,6 +28,7 @@ import { buildFrustumLinesGeometry } from '@/utils/frustumLinesGeometry';
 import { buildImagePlaneMeshObjects } from '@/utils/imagePlaneMeshObjects';
 import { computeTimeRange, resolveTimeWindow } from '@/utils/timeAxis';
 import { OverlayUI } from './OverlayUI';
+import { ViewContextMenu } from '../common/ViewContextMenu';
 import { useAppContext, useSelection, useNavigation, useUI } from '@/AppContext';
 import { useSetting, settings } from '../../utils/settings';
 import { ImageTextureManager } from './ImageTextureManager.js';
@@ -111,6 +112,9 @@ export function ColmapVisualizer() {
   const { navigationHistory } = useNavigation();
   const { imageDetailId, openImageDetail, showMatchesInModal, matchedImageId, setMatchedImageId } = useUI();
   
+  const { addToast } = useAppContext();
+  const [ctxMenu, setCtxMenu] = useState(null); // {x, y, view}
+
   // Settings
   const [backgroundColor] = useSetting('ui', 'backgroundColor');
   const [axesDisplayMode] = useSetting('ui', 'axesDisplayMode');
@@ -296,7 +300,7 @@ export function ColmapVisualizer() {
   );
   
   const { updateCameraFromInput: fpsUpdateCameraFromInput, focusOnTarget: fpsFocusOnTarget } = fpsControls;
-  const { updateCameraFromInput: orbitUpdateCameraFromInput, focusOnTarget: orbitFocusOnTarget } = orbitControls;
+  const { updateCameraFromInput: orbitUpdateCameraFromInput, focusOnTarget: orbitFocusOnTarget, orbitTargetRef, orbitDistanceRef } = orbitControls;
   
   // updateCameraFromInput by mode
   const updateCameraFromInput = isOrbitMode ? orbitUpdateCameraFromInput : fpsUpdateCameraFromInput;
@@ -1168,10 +1172,62 @@ export function ColmapVisualizer() {
   }, [updateCameraFromInput, render]);
 
 
+  const captureView = useCallback(() => {
+    const cam = cameraRef.current;
+    if (!cam) return null;
+    const pos = cam._position ?? cam.position;
+    return {
+      v: 1,
+      pos: [...pos],
+      yaw: cam._yawRad ?? cam.yawRad ?? 0,
+      pitch: cam._pitchRad ?? cam.pitchRad ?? 0,
+      fov: cameraFov,
+      orbitTarget: orbitTargetRef?.current ? [...orbitTargetRef.current] : null,
+      orbitRadius: orbitDistanceRef?.current ?? null,
+    };
+  }, [cameraFov, orbitTargetRef, orbitDistanceRef]);
+
+  const applyView = useCallback((view) => {
+    try {
+      const cam = cameraRef.current;
+      if (!cam) return;
+      if (view.pos) cam._position = [...view.pos];
+      if (view.yaw !== undefined) cam._yawRad = view.yaw;
+      if (view.pitch !== undefined) cam._pitchRad = view.pitch;
+      cam._cacheInvalid = true;
+      cam._rotationCache = null;
+      cam._viewMatrixCache = null;
+      viewMatrixRef.current = cam.viewMatrix;
+      if (view.fov !== undefined && view.fov !== cameraFov) setCameraFov(view.fov);
+      if (isOrbitMode && view.orbitTarget && orbitTargetRef) {
+        orbitTargetRef.current = [...view.orbitTarget];
+      }
+      if (isOrbitMode && view.orbitRadius != null && orbitDistanceRef) {
+        orbitDistanceRef.current = view.orbitRadius;
+      }
+    } catch (err) {
+      console.warn('[ColmapVisualizer] applyView failed', err);
+    }
+  }, [cameraFov, setCameraFov, isOrbitMode, orbitTargetRef, orbitDistanceRef]);
+
+  // Apply saved default view on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('colmaputil.default_view');
+      if (!raw) return;
+      const view = JSON.parse(raw);
+      if (view?.v === 1) applyView(view);
+    } catch (err) {
+      console.warn('[ColmapVisualizer] could not restore default view', err);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount only
+
   const handleContextMenu = useCallback((e) => {
-    // Context menu removed, no-op
     e.preventDefault();
-  }, []);
+    const view = captureView();
+    if (view) setCtxMenu({ x: e.clientX, y: e.clientY, view });
+  }, [captureView]);
 
   const handleMouseDown = useCallback((e) => {
     if (e.button === 2) {
@@ -1608,6 +1664,39 @@ export function ColmapVisualizer() {
         onDoubleClick={handleDoubleClick}
       />
       <OverlayUI />
+      {ctxMenu && (
+        <ViewContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          onCopy={() => {
+            const json = JSON.stringify(ctxMenu.view, null, 2);
+            (navigator.clipboard?.writeText(json) ?? Promise.reject())
+              .then(() => addToast({ message: '视角已复制到剪贴板', type: 'success', duration: 1500 }))
+              .catch(() => {
+                try {
+                  const ta = document.createElement('textarea');
+                  ta.value = json;
+                  document.body.appendChild(ta);
+                  ta.select();
+                  document.execCommand('copy');
+                  document.body.removeChild(ta);
+                  addToast({ message: '视角已复制到剪贴板', type: 'success', duration: 1500 });
+                } catch (_) {
+                  addToast({ message: '复制失败，请手动复制', type: 'error', duration: 2000 });
+                }
+              });
+          }}
+          onSetDefault={() => {
+            localStorage.setItem('colmaputil.default_view', JSON.stringify(ctxMenu.view));
+            addToast({ message: '已设为默认视角', type: 'success', duration: 1500 });
+          }}
+          onResetDefault={() => {
+            localStorage.removeItem('colmaputil.default_view');
+            addToast({ message: '已重置默认视角', type: 'info', duration: 1500 });
+          }}
+        />
+      )}
       {/* Image plane textures driven by ImageTextureManager in useEffect */}
       {/* Hover card: camera info */}
       {hoveredImageInfo && hoveredImageCardPos && !isDraggingRef.current && (

@@ -51,12 +51,15 @@ const IMAGE_PLANE_ALPHA_MATCHED_SELECTED = 0.7;
 /** 有 Colmap 数据时：cameraSpeedMultiplier = _SPEED_MULTIPLIER * magnitudeD；无数据时用 0.5 */
 const _SPEED_MULTIPLIER = 0.05;
 
-// Factory-default view applied on every mount when no localStorage override is present.
-// Exported from a right-click "复制当前视角" JSON; rounded for readability.
+// Factory-default orbit view applied on every mount when no localStorage override exists.
+// pos=[10.34,-6.16,-8.86], orbitTarget=[4.75,-1.03,1.17].
+// yaw  = atan2(-dx,-dz) = atan2(5.59,-10.03) ≈ 2.63 rad  (convention: fwdH=[-sin(y),0,-cos(y)])
+// pitch = arcsin(dy/|d|) = arcsin(5.13/12.58) ≈ 0.42 rad
 const FACTORY_VIEW = {
-  v: 1,
+  v: 2,
+  mode: 'orbit',
   pos: [10.34, -6.16, -8.86],
-  yaw: 0,
+  yaw: 2.63,
   pitch: 0.42,
   fov: 60,
   orbitTarget: [4.75, -1.03, 1.17],
@@ -1187,47 +1190,123 @@ export function ColmapVisualizer() {
   const captureView = useCallback(() => {
     const cam = cameraRef.current;
     if (!cam) return null;
+    const fov = cameraFov;
+
+    if (isOrbitMode && orbitTargetRef?.current) {
+      const pos = cam._position ?? cam.position;
+      const target = orbitTargetRef.current;
+      const radius = orbitDistanceRef?.current ?? null;
+      // Derive yaw/pitch from the actual pos→target direction.
+      // In orbit mode cam._yawRad is always 0 (reset by applyOrbitRotation),
+      // so using it would serialise a stale FPS residue instead of the real azimuth.
+      const dx = target[0] - pos[0];
+      const dy = target[1] - pos[1];
+      const dz = target[2] - pos[2];
+      const mag = Math.hypot(dx, dy, dz);
+      const pitch = mag > 1e-6 ? Math.asin(Math.max(-1, Math.min(1, dy / mag))) : 0;
+      // Convention: forwardHorizontalRef = [-sin(yaw), 0, -cos(yaw)]
+      // → yaw = atan2(-fwd.x, -fwd.z)
+      const yaw = mag > 1e-6 ? Math.atan2(-dx, -dz) : 0;
+      return {
+        v: 2,
+        mode: 'orbit',
+        pos: [...pos],
+        yaw,
+        pitch,
+        fov,
+        orbitTarget: [...target],
+        orbitRadius: radius,
+      };
+    }
+
+    // FPS mode
     const pos = cam._position ?? cam.position;
     return {
-      v: 1,
+      v: 2,
+      mode: 'fps',
       pos: [...pos],
       yaw: cam._yawRad ?? cam.yawRad ?? 0,
       pitch: cam._pitchRad ?? cam.pitchRad ?? 0,
-      fov: cameraFov,
-      orbitTarget: orbitTargetRef?.current ? [...orbitTargetRef.current] : null,
-      orbitRadius: orbitDistanceRef?.current ?? null,
+      fov,
     };
-  }, [cameraFov, orbitTargetRef, orbitDistanceRef]);
+  }, [cameraFov, isOrbitMode, orbitTargetRef, orbitDistanceRef]);
 
   const applyView = useCallback((view) => {
     try {
       const cam = cameraRef.current;
       if (!cam) return;
-      if (view.pos) cam._position = [...view.pos];
-      if (view.yaw !== undefined) cam._yawRad = view.yaw;
-      if (view.pitch !== undefined) cam._pitchRad = view.pitch;
-      cam._cacheInvalid = true;
-      cam._rotationCache = null;
-      cam._viewMatrixCache = null;
-      viewMatrixRef.current = cam.viewMatrix;
-      if (view.fov !== undefined && view.fov !== cameraFov) setCameraFov(view.fov);
-      if (isOrbitMode && view.orbitTarget && orbitTargetRef) {
-        orbitTargetRef.current = [...view.orbitTarget];
-      }
-      if (isOrbitMode && view.orbitRadius != null && orbitDistanceRef) {
-        orbitDistanceRef.current = view.orbitRadius;
+
+      // Determine mode: v2 explicit; v1 heuristic (orbitTarget present → orbit).
+      const mode = view.mode ?? (view.orbitTarget ? 'orbit' : 'fps');
+
+      if (mode === 'orbit' && view.orbitTarget && view.orbitRadius != null) {
+        const target = view.orbitTarget;
+        const radius = view.orbitRadius;
+
+        // Resolve yaw/pitch.
+        // v2 (mode field present): angles are already derived from pos→target geometry.
+        // v1 compat (no mode field): stored yaw may be a stale FPS residue — re-derive
+        //   from the stored pos→target vector if pos is available.
+        let yaw, pitch;
+        if (view.mode === 'orbit' && view.yaw !== undefined && view.pitch !== undefined) {
+          yaw = view.yaw;
+          pitch = view.pitch;
+        } else if (view.pos) {
+          const dx = target[0] - view.pos[0];
+          const dy = target[1] - view.pos[1];
+          const dz = target[2] - view.pos[2];
+          const mag = Math.hypot(dx, dy, dz);
+          pitch = mag > 1e-6 ? Math.asin(Math.max(-1, Math.min(1, dy / mag))) : 0;
+          yaw = mag > 1e-6 ? Math.atan2(-dx, -dz) : 0;
+        } else {
+          yaw = view.yaw ?? 0;
+          pitch = view.pitch ?? 0;
+        }
+
+        // Reconstruct camera position and orientation from orbit geometry.
+        // forwardHorizontalRef = [-sin(yaw), 0, -cos(yaw)]  (yaw=0 → looking in -Z)
+        const fwdH = [-Math.sin(yaw), 0, -Math.cos(yaw)];
+        const cosPitch = Math.cos(pitch);
+        const sinPitch = Math.sin(pitch);
+        // Full forward = fwdH pitched by pitch (worldUp contribution = sinPitch * [0,1,0])
+        const fwd = [fwdH[0] * cosPitch, sinPitch, fwdH[2] * cosPitch];
+        cam._position = [
+          target[0] - fwd[0] * radius,
+          target[1] - fwd[1] * radius,
+          target[2] - fwd[2] * radius,
+        ];
+        cam._forwardHorizontalRef = fwdH;
+        cam._yawRad = 0;
+        cam._pitchRad = pitch;
+        cam._cacheInvalid = true;
+        cam._rotationCache = null;
+        cam._viewMatrixCache = null;
+        viewMatrixRef.current = cam.viewMatrix;
+        if (view.fov !== undefined && view.fov !== cameraFov) setCameraFov(view.fov);
+        if (orbitTargetRef) orbitTargetRef.current = [...target];
+        if (orbitDistanceRef) orbitDistanceRef.current = radius;
+      } else {
+        // FPS mode
+        if (view.pos) cam._position = [...view.pos];
+        if (view.yaw !== undefined) cam._yawRad = view.yaw;
+        if (view.pitch !== undefined) cam._pitchRad = view.pitch;
+        cam._cacheInvalid = true;
+        cam._rotationCache = null;
+        cam._viewMatrixCache = null;
+        viewMatrixRef.current = cam.viewMatrix;
+        if (view.fov !== undefined && view.fov !== cameraFov) setCameraFov(view.fov);
       }
     } catch (err) {
       console.warn('[ColmapVisualizer] applyView failed', err);
     }
-  }, [cameraFov, setCameraFov, isOrbitMode, orbitTargetRef, orbitDistanceRef]);
+  }, [cameraFov, setCameraFov, orbitTargetRef, orbitDistanceRef]);
 
   // Apply saved view or factory default on every mount.
   useEffect(() => {
     try {
       const raw = localStorage.getItem('colmaputil.default_view');
       const saved = raw ? JSON.parse(raw) : null;
-      applyView(saved?.v === 1 ? saved : FACTORY_VIEW);
+      applyView(saved?.v >= 1 ? saved : FACTORY_VIEW);
     } catch (err) {
       console.warn('[ColmapVisualizer] could not restore default view', err);
       applyView(FACTORY_VIEW);

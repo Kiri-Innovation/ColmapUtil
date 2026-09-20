@@ -84,7 +84,9 @@ const DEFAULT_CAMERA = {
   worldUp: [0, 1, 0],
 };
 
-function useCanvasSize(canvasRef, containerRef) {
+function useCanvasSize(canvasRef, containerRef, renderScaleRef) {
+  const updateSizeRef = useRef(null);
+
   useEffect(() => {
     const canvas = canvasRef?.current;
     const container = containerRef?.current;
@@ -95,18 +97,25 @@ function useCanvasSize(canvasRef, containerRef) {
       const w = container.clientWidth;
       const h = container.clientHeight;
       if (w <= 0 || h <= 0) return;
-      const dpr = Math.min(window.devicePixelRatio ?? 1, 2);
+      const scale = renderScaleRef?.current ?? 1;
+      const dpr = Math.min((window.devicePixelRatio ?? 1) * scale, 3);
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
     };
 
+    updateSizeRef.current = updateSize;
     updateSize();
     const ro = new ResizeObserver(updateSize);
     ro.observe(container);
-    return () => ro.disconnect();
-  }, [canvasRef, containerRef]);
+    return () => {
+      ro.disconnect();
+      updateSizeRef.current = null;
+    };
+  }, [canvasRef, containerRef]); // renderScaleRef is a ref (stable value) — intentionally omitted
+
+  return updateSizeRef;
 }
 
 export function ColmapVisualizer() {
@@ -195,7 +204,22 @@ export function ColmapVisualizer() {
   const cameraRef = useRef(defaultCamera);
   const camerasRef = useRef([defaultCamera]);
 
-  useCanvasSize(canvasRef, containerRef);
+  const renderScaleRef = useRef(1);
+  const updateCanvasSizeRef = useCanvasSize(canvasRef, containerRef, renderScaleRef);
+
+  // `set-render-scale` from the HoloLab parent: scale canvas DPR with xyflow zoom.
+  useEffect(() => {
+    const handler = (event) => {
+      const d = event?.data;
+      if (!d || typeof d !== 'object' || d.type !== 'set-render-scale') return;
+      const raw = typeof d.scale === 'number' && Number.isFinite(d.scale) ? d.scale : 1;
+      const maxScale = 3 / (window.devicePixelRatio ?? 1);
+      renderScaleRef.current = Math.min(Math.max(0.25, raw), maxScale);
+      updateCanvasSizeRef.current?.();
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []); // stable refs — no deps
 
   const {
     gl,

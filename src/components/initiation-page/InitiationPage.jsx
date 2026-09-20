@@ -8,6 +8,7 @@ import { LanguageTabSwitcher } from '../common/LanguageTabSwitcher';
 import { handleFileDrop } from './fileDropHandler.js';
 import { useIsMobile } from '../../utils/isMobile.js';
 import { isExtensionPath } from '../../utils/extensionModalUrl';
+import { isEmbedMode } from '../../utils/embedMode.js';
 import { ERROR_TOAST_DURATION_MS } from '../../config';
 import { Info, Plus, X } from 'lucide-react';
 import './InitiationPage.css';
@@ -73,14 +74,6 @@ function ExtensionReceivingOverlay() {
       </div>
     </div>
   );
-}
-
-// `?embed=1` 嵌入模式：父页面（如 Kiri4D admin / HoloLab canvas preview）通过 postMessage 推数据
-function isEmbedMode() {
-  if (typeof window === 'undefined') return false;
-  const p = new URLSearchParams(window.location.search);
-  const v = p.get('embed');
-  return v === '1' || v === 'true';
 }
 
 // Two messages supported in embed mode:
@@ -471,7 +464,12 @@ export function InitiationPage({ children }) {
         />
       )}
 
-      {loading && !extensionReceiving && <LoadingOverlay />}
+      {/* In embed mode the parent renders its own loading affordance
+          (a subtle corner chip only shown for genuine cache misses), and
+          the parent hot-swaps data via postMessage — a full-page overlay
+          on every swap would flash the previous frame off-screen and
+          look worse than doing nothing. Standalone paths still show it. */}
+      {loading && !extensionReceiving && !isEmbedMode() && <LoadingOverlay />}
 
       {extensionReceiving && <ExtensionReceivingOverlay />}
 

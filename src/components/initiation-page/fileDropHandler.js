@@ -24,6 +24,7 @@ import { clearThumbnailCache } from '../sidebar/Thumbnail.jsx';
 import { clearFrustumCache } from '../visualizer/ImageTextureManager.js';
 import { cameraWorldPositionFromPose } from '../../utils/colmapTransforms.js';
 import { isZipFile, loadColmapFromZip } from '../../utils/zipLoader.js';
+import { isEmbedMode } from '../../utils/embedMode.js';
 
 function fileMapHasRasterImagePaths(fileMap) {
   if (!fileMap || typeof fileMap.keys !== 'function') return false;
@@ -872,7 +873,15 @@ export function handleFileDrop(context) {
       setSelectedImageId(null);
       closeImageDetail();
 
-      await new Promise((r) => setTimeout(r, 200));
+      // 200 ms UX delay that lets the standalone-drop loading spinner
+      // finish an animation cycle before the scene pops in. In embed
+      // mode there IS no spinner (parent suppresses it) and the parent
+      // pipeline aims for perceptually-instant hot-swaps on paginator
+      // flip — the delay just adds visible lag between click and
+      // rendered frame. Skip it entirely.
+      if (!isEmbedMode()) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
 
       const currentSourceType = sourceTypeRef?.current;
       if (!currentSourceType) setSourceInfo('local', null);

@@ -51,11 +51,23 @@ const IMAGE_PLANE_ALPHA_MATCHED_SELECTED = 0.7;
 /** 有 Colmap 数据时：cameraSpeedMultiplier = _SPEED_MULTIPLIER * magnitudeD；无数据时用 0.5 */
 const _SPEED_MULTIPLIER = 0.05;
 
+// Factory-default view applied on every mount when no localStorage override is present.
+// Exported from a right-click "复制当前视角" JSON; rounded for readability.
+const FACTORY_VIEW = {
+  v: 1,
+  pos: [10.34, -6.16, -8.86],
+  yaw: 0,
+  pitch: 0.42,
+  fov: 60,
+  orbitTarget: [4.75, -1.03, 1.17],
+  orbitRadius: 12.69,
+};
+
 const DEFAULT_CAMERA = {
   id: 0,
   width: 1920,
   height: 1080,
-  position: [0, 0, 15],
+  position: [10.34, -6.16, -8.86],
   rotation: [
     [1, 0, 0],
     [0, 1, 0],
@@ -64,7 +76,7 @@ const DEFAULT_CAMERA = {
   fx: 1000,
   fy: 1000,
   yawRad: 0,
-  pitchRad: 0,
+  pitchRad: 0.42,
   forwardHorizontalRef: [0, 0, -1],
   worldUp: [0, 1, 0],
 };
@@ -294,7 +306,7 @@ export function ColmapVisualizer() {
     null, // onNotifyUserInput
     false, // disableLeftMouseButton
     cameraSpeedMultiplier,
-    15, // initialOrbitRadius
+    12.69, // initialOrbitRadius — matches FACTORY_VIEW.orbitRadius
     0.6, // minOrbitRadius
     isOrbitMode
   );
@@ -1210,15 +1222,15 @@ export function ColmapVisualizer() {
     }
   }, [cameraFov, setCameraFov, isOrbitMode, orbitTargetRef, orbitDistanceRef]);
 
-  // Apply saved default view on mount
+  // Apply saved view or factory default on every mount.
   useEffect(() => {
     try {
       const raw = localStorage.getItem('colmaputil.default_view');
-      if (!raw) return;
-      const view = JSON.parse(raw);
-      if (view?.v === 1) applyView(view);
+      const saved = raw ? JSON.parse(raw) : null;
+      applyView(saved?.v === 1 ? saved : FACTORY_VIEW);
     } catch (err) {
       console.warn('[ColmapVisualizer] could not restore default view', err);
+      applyView(FACTORY_VIEW);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // mount only

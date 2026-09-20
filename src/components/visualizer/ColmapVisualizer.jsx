@@ -52,18 +52,18 @@ const IMAGE_PLANE_ALPHA_MATCHED_SELECTED = 0.7;
 const _SPEED_MULTIPLIER = 0.05;
 
 // Factory-default orbit view applied on every mount when no localStorage override exists.
-// pos=[10.34,-6.16,-8.86], orbitTarget=[4.75,-1.03,1.17].
-// yaw  = atan2(-dx,-dz) = atan2(5.59,-10.03) ≈ 2.63 rad  (convention: fwdH=[-sin(y),0,-cos(y)])
-// pitch = arcsin(dy/|d|) = arcsin(5.13/12.58) ≈ 0.42 rad
+// pos=[11.87,-5.46,-2.15], orbitTarget=[5.33,-0.54,4.51].
+// yaw  = atan2(-dx,-dz) = atan2(6.54,-6.66) ≈ 2.365 rad  (convention: fwdH=[-sin(y),0,-cos(y)])
+// pitch = arcsin(dy/|d|) = arcsin(4.92/10.55) ≈ 0.485 rad
 const FACTORY_VIEW = {
   v: 2,
   mode: 'orbit',
-  pos: [10.34, -6.16, -8.86],
-  yaw: 2.63,
-  pitch: 0.42,
+  pos: [11.87, -5.46, -2.15],
+  yaw: 2.365,
+  pitch: 0.485,
   fov: 60,
-  orbitTarget: [4.75, -1.03, 1.17],
-  orbitRadius: 12.69,
+  orbitTarget: [5.33, -0.54, 4.51],
+  orbitRadius: 10.55,
 };
 
 const DEFAULT_CAMERA = {

@@ -42,6 +42,7 @@ export default function SplatvBenchmark() {
   const [ctxMenu, setCtxMenu] = useState(null);
   const pendingViewRef = useRef(null);
   const factoryViewRef = useRef(null);
+  const announcedReadyRef = useRef(false);
 
   const captureView = useMemo(() => () => {
     const state = cameraState;
@@ -79,6 +80,7 @@ export default function SplatvBenchmark() {
     cam._cacheInvalid = true; cam._rotationCache = null; cam._viewMatrixCache = null;
     state.orbitTargetRef.current = [...target];
     state.orbitDistanceRef.current = view.orbitRadius;
+    state.orbitTargetDistanceRef.current = view.orbitRadius;
   }, [cameraState]);
 
   useEffect(() => {
@@ -92,8 +94,12 @@ export default function SplatvBenchmark() {
       if (managed) applyView(event.data.view ?? factoryViewRef.current);
     };
     window.addEventListener('message', onMessage);
+    if (cameraState && !announcedReadyRef.current) {
+      announcedReadyRef.current = true;
+      window.parent.postMessage({ type: 'hololab-viewer-ready', viewer_id: 'splatv_scene' }, window.location.origin);
+    }
     return () => window.removeEventListener('message', onMessage);
-  }, [applyView]);
+  }, [applyView, cameraState]);
 
   useEffect(() => {
     if (cameraState && !factoryViewRef.current) factoryViewRef.current = captureView();

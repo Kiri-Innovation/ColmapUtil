@@ -1309,6 +1309,7 @@ export function ColmapVisualizer() {
         if (view.fov !== undefined && view.fov !== cameraFov) setCameraFov(view.fov);
         if (orbitTargetRef) orbitTargetRef.current = [...target];
         if (orbitDistanceRef) orbitDistanceRef.current = radius;
+        orbitControls.orbitTargetDistanceRef.current = radius;
       } else {
         // FPS mode
         if (view.pos) cam._position = [...view.pos];
@@ -1330,6 +1331,7 @@ export function ColmapVisualizer() {
   // fallback below.
   const [workflowViewManaged, setWorkflowViewManaged] = useState(false);
   const [workflowView, setWorkflowView] = useState(null);
+  const announcedReadyRef = useRef(false);
   useEffect(() => {
     const handler = (event) => {
       if (event.origin !== window.location.origin || event.data?.type !== 'hololab-viewer-camera') return;
@@ -1341,6 +1343,10 @@ export function ColmapVisualizer() {
       if (managed) applyView(event.data.view ?? FACTORY_VIEW);
     };
     window.addEventListener('message', handler);
+    if (!announcedReadyRef.current) {
+      announcedReadyRef.current = true;
+      window.parent.postMessage({ type: 'hololab-viewer-ready', viewer_id: 'colmap' }, window.location.origin);
+    }
     return () => window.removeEventListener('message', handler);
   }, [applyView]);
 

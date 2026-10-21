@@ -1325,6 +1325,30 @@ export function ColmapVisualizer() {
     }
   }, [cameraFov, setCameraFov, orbitTargetRef, orbitDistanceRef]);
 
+  // Embedded HoloLab cards own one workflow-wide view.  A standalone
+  // ColmapUtil page never receives this message and retains its localStorage
+  // fallback below.
+  const [workflowViewManaged, setWorkflowViewManaged] = useState(false);
+  const [workflowView, setWorkflowView] = useState(null);
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.origin !== window.location.origin || event.data?.type !== 'hololab-viewer-camera') return;
+      const managed = event.data.managed === true;
+      setWorkflowViewManaged(managed);
+      setWorkflowView(event.data.view ?? null);
+      // A missing/unavailable workflow service deliberately falls back to
+      // this viewer's localStorage default; do not overwrite it with null.
+      if (managed) applyView(event.data.view ?? FACTORY_VIEW);
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [applyView]);
+
+  const publishWorkflowView = useCallback((view) => {
+    if (!workflowViewManaged || window.parent === window) return;
+    window.parent.postMessage({ type: 'hololab-viewer-camera-default', view }, window.location.origin);
+  }, [workflowViewManaged]);
+
   // Apply saved view or factory default on every mount.
   useEffect(() => {
     try {
@@ -1803,13 +1827,26 @@ export function ColmapVisualizer() {
               });
           }}
           onSetDefault={() => {
-            localStorage.setItem('colmaputil.default_view', JSON.stringify(ctxMenu.view));
+            if (workflowViewManaged) {
+              setWorkflowView(ctxMenu.view);
+              publishWorkflowView(ctxMenu.view);
+            } else {
+              localStorage.setItem('colmaputil.default_view', JSON.stringify(ctxMenu.view));
+            }
             addToast({ message: '已设为默认视角', type: 'success', duration: 1500 });
           }}
           onResetDefault={() => {
-            localStorage.removeItem('colmaputil.default_view');
+            if (workflowViewManaged) {
+              setWorkflowView(null);
+              applyView(FACTORY_VIEW);
+              publishWorkflowView(null);
+            } else {
+              localStorage.removeItem('colmaputil.default_view');
+              applyView(FACTORY_VIEW);
+            }
             addToast({ message: '已重置默认视角', type: 'info', duration: 1500 });
           }}
+          hasDefault={workflowViewManaged ? !!workflowView : !!localStorage.getItem('colmaputil.default_view')}
         />
       )}
       {/* Image plane textures driven by ImageTextureManager in useEffect */}

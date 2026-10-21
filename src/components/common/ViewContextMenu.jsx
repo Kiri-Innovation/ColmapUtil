@@ -1,10 +1,7 @@
 import { useEffect, useRef } from 'react';
 
-const LS_KEY = 'colmaputil.default_view';
-
-export function ViewContextMenu({ x, y, onCopy, onSetDefault, onResetDefault, onClose }) {
+export function ViewContextMenu({ x, y, onCopy, onSetDefault, onResetDefault, onClose, hasDefault }) {
   const menuRef = useRef(null);
-  const hasDefault = !!localStorage.getItem(LS_KEY);
 
   useEffect(() => {
     const handleDown = (e) => {

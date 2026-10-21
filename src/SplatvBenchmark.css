@@ -1,6 +1,9 @@
 .splatv-benchmark {
-  width: 100vw;
-  height: 100vh;
+  /* This page also runs inside two nested iframes.  Viewport units refer to
+     the nested browsing context and can introduce scrollbars there; fill the
+     host iframe's content box instead. */
+  width: 100%;
+  height: 100%;
   position: relative;
   overflow: hidden;
   background: #0b0d12;
@@ -19,7 +22,7 @@
   top: 12px;
   left: 12px;
   padding: 9px 11px;
-  max-width: min(460px, calc(100vw - 24px));
+  max-width: min(460px, calc(100% - 24px));
   color: #e8edf7;
   background: rgb(12 16 25 / 82%);
   border: 1px solid rgb(144 164 198 / 32%);
@@ -39,7 +42,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  width: min(420px, calc(100vw - 32px));
+  width: min(420px, calc(100% - 32px));
   padding: 8px 11px;
   color: #e8edf7;
   background: rgb(12 16 25 / 82%);

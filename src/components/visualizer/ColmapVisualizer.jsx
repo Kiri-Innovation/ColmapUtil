@@ -1235,6 +1235,7 @@ export function ColmapVisualizer() {
         v: 2,
         mode: 'orbit',
         pos: [...pos],
+        up: cam.worldUp,
         yaw,
         pitch,
         fov,
@@ -1331,16 +1332,18 @@ export function ColmapVisualizer() {
   // fallback below.
   const [workflowViewManaged, setWorkflowViewManaged] = useState(false);
   const [workflowView, setWorkflowView] = useState(null);
+  const workflowFactoryRef = useRef(null);
   const announcedReadyRef = useRef(false);
   useEffect(() => {
     const handler = (event) => {
       if (event.origin !== window.location.origin || event.data?.type !== 'hololab-viewer-camera') return;
       const managed = event.data.managed === true;
       setWorkflowViewManaged(managed);
-      setWorkflowView(event.data.view ?? null);
+      setWorkflowView(event.data.has_default === false ? null : event.data.view ?? null);
+      if (event.data.factory_view) workflowFactoryRef.current = event.data.factory_view;
       // A missing/unavailable workflow service deliberately falls back to
       // this viewer's localStorage default; do not overwrite it with null.
-      if (managed) applyView(event.data.view ?? FACTORY_VIEW);
+      if (managed) applyView(event.data.view ?? workflowFactoryRef.current);
     };
     window.addEventListener('message', handler);
     if (!announcedReadyRef.current) {
@@ -1844,7 +1847,7 @@ export function ColmapVisualizer() {
           onResetDefault={() => {
             if (workflowViewManaged) {
               setWorkflowView(null);
-              applyView(FACTORY_VIEW);
+              applyView(workflowFactoryRef.current);
               publishWorkflowView(null);
             } else {
               localStorage.removeItem('colmaputil.default_view');

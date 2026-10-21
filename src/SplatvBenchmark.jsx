@@ -42,6 +42,7 @@ export default function SplatvBenchmark() {
   const [ctxMenu, setCtxMenu] = useState(null);
   const pendingViewRef = useRef(null);
   const factoryViewRef = useRef(null);
+  const workflowFactoryRef = useRef(null);
   const announcedReadyRef = useRef(false);
 
   const captureView = useMemo(() => () => {
@@ -55,6 +56,7 @@ export default function SplatvBenchmark() {
     const mag = Math.hypot(dx, dy, dz);
     return {
       v: 2, mode: 'orbit', pos: [...pos],
+      up: cam.worldUp,
       yaw: mag > 1e-6 ? Math.atan2(-dx, -dz) : 0,
       pitch: mag > 1e-6 ? Math.asin(Math.max(-1, Math.min(1, dy / mag))) : 0,
       fov: cam.targetVerticalFOV ?? 60,
@@ -88,10 +90,11 @@ export default function SplatvBenchmark() {
       if (event.origin !== window.location.origin || event.data?.type !== 'hololab-viewer-camera') return;
       const managed = event.data.managed === true;
       setWorkflowManaged(managed);
-      setWorkflowView(event.data.view ?? null);
+      setWorkflowView(event.data.has_default === false ? null : event.data.view ?? null);
+      if (event.data.factory_view) workflowFactoryRef.current = event.data.factory_view;
       // If the host has no workflow view service, preserve the local fallback
       // instead of treating its null as a reset command.
-      if (managed) applyView(event.data.view ?? factoryViewRef.current);
+      if (managed) applyView(event.data.view ?? workflowFactoryRef.current);
     };
     window.addEventListener('message', onMessage);
     if (cameraState && !announcedReadyRef.current) {
@@ -217,7 +220,7 @@ export default function SplatvBenchmark() {
         }}
         onResetDefault={() => {
           setWorkflowView(null);
-          applyView(factoryViewRef.current);
+          applyView(workflowManaged ? workflowFactoryRef.current : factoryViewRef.current);
           if (workflowManaged) publishView(null);
           else localStorage.removeItem(DEFAULT_VIEW_STORAGE_KEY);
         }}

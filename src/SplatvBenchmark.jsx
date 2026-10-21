@@ -177,7 +177,7 @@ export default function SplatvBenchmark() {
 
   return (
     <main className="splatv-benchmark">
-      <canvas ref={canvasRef} className="splatv-canvas" onContextMenu={(event) => {
+      <canvas ref={canvasRef} className="splatv-canvas" tabIndex={0} aria-label="SplaTV 3D view" onContextMenu={(event) => {
         event.preventDefault(); const view = captureView(); if (view) setCtxMenu({ x: event.clientX, y: event.clientY, view });
       }} />
       {showHud && <aside className="splatv-hud" aria-live="polite">

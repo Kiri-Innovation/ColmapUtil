@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { HoloEngineRuntime, SceneManager } from '@holoengineruntime';
 import { ViewContextMenu } from './components/common/ViewContextMenu';
 import './SplatvBenchmark.css';
+import { useSplatvPlayback, playbackPeriod } from './useSplatvPlayback';
 
 const DEFAULT_VIEW_STORAGE_KEY = 'colmaputil.default_view';
 
@@ -35,7 +36,7 @@ export default function SplatvBenchmark() {
   const [status, setStatus] = useState(src ? '加载、解析与首次深度排序中' : '缺少 src 参数');
   const [elapsed, setElapsed] = useState(0);
   const [firstFrameMs, setFirstFrameMs] = useState(null);
-  const [time, setTime] = useState(0.5);
+  const playback = useSplatvPlayback(playbackPeriod(new URLSearchParams(window.location.search).get('playback_period')));
   const [cameraState, setCameraState] = useState(null);
   const [workflowManaged, setWorkflowManaged] = useState(false);
   const [workflowView, setWorkflowView] = useState(null);
@@ -193,24 +194,25 @@ export default function SplatvBenchmark() {
         <div>{firstFrameMs === null ? `耗时 ${(elapsed / 1000).toFixed(1)} s` : `首帧 ${(firstFrameMs / 1000).toFixed(2)} s`}</div>
         <div className="splatv-help">拖拽旋转 · 滚轮缩放</div>
       </aside>}
-      <label className="splatv-time-control">
-        <span>时间 {time.toFixed(2)}</span>
-        <input
-          className="nodrag nowheel"
-          type="range"
-          min="0"
-          max="1"
-          step="0.001"
-          value={time}
-          onChange={(event) => setTime(Number(event.target.value))}
-          aria-label="4D Gaussian time"
-        />
-      </label>
+      <div className="splatv-time-control nodrag nowheel">
+        <span ref={playback.labelRef}>自动 0.50</span>
+        <div className="splatv-time-track" ref={playback.trackRef}
+          onPointerDown={playback.pointerDown} onPointerMove={playback.pointerMove}
+          onPointerUp={playback.pointerEnd} onPointerCancel={playback.pointerEnd}
+          onLostPointerCapture={playback.pointerEnd}>
+          <button type="button" role="slider" className="splatv-time-thumb" ref={playback.thumbRef}
+            aria-label="4D Gaussian time" aria-valuemin={0} aria-valuemax={1} aria-valuenow={0.5}
+            aria-orientation="horizontal" data-mode="auto" style={{ left: '50%' }}
+            title="拖拽暂停；双击把手或按 Enter 恢复往复；方向键调整时间"
+            onDoubleClick={playback.resume} onKeyDown={playback.keyDown} />
+        </div>
+      </div>
       <HoloEngineRuntime
         canvasRef={canvasRef}
         sceneManager={sceneManager}
         cameraMode="orbit"
-        fourDGaussianTime={time}
+        fourDGaussianTime={0.5}
+        fourDGaussianTimeRef={playback.timeRef}
         onCameraStateReady={setCameraState}
         onLoadComplete={loaded}
         onError={(error) => setStatus(`加载失败：${error?.message || String(error)}`)}

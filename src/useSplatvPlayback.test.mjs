@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { advancePlayback, playbackPeriod } from './useSplatvPlayback.js';
+import { advancePlayback, playbackPeriod, restorePlayback } from './useSplatvPlayback.js';
+
+test('restore preferences, validate invalid records and retain ping-pong direction', () => {
+  for (const raw of [null, 'broken', '{}', '{"mode":"manual","time":"0.3"}']) {
+    assert.deepEqual(restorePlayback(raw), { mode: 'auto', time: .5, direction: 1 });
+  }
+  assert.deepEqual(restorePlayback('{"mode":"manual","time":0.3}'), { mode: 'manual', time: .3, direction: 1 });
+  assert.deepEqual(restorePlayback('{"mode":"auto","time":0.8,"direction":-1}'), { mode: 'auto', time: .8, direction: -1 });
+  assert.equal(restorePlayback('{"mode":"manual","time":2}').time, 1);
+});
 
 test('period defaults and bounds', () => {
   for (const invalid of [null, '', 'bad', 0, 1, 121]) assert.equal(playbackPeriod(invalid), 8);

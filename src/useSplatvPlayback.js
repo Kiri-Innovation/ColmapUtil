@@ -1,4 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+export const PLAYBACK_STORAGE_KEY = 'colmaputil.splatv.playback';
+export function restorePlayback(raw) {
+  try {
+    const saved = JSON.parse(raw);
+    if (['auto', 'manual'].includes(saved?.mode) && typeof saved.time === 'number' && Number.isFinite(saved.time)) {
+      return { mode: saved.mode, time: Math.max(0, Math.min(1, saved.time)), direction: saved.direction === -1 ? -1 : 1 };
+    }
+  } catch { /* Invalid preferences fall back to the first-visit defaults. */ }
+  return { mode: 'auto', time: 0.5, direction: 1 };
+}
 
 export function playbackPeriod(raw) {
   const seconds = Number(raw);
@@ -12,14 +23,29 @@ export function advancePlayback(value, direction, seconds, period) {
 
 /** Viewer-owned animation; no React state updates in the frame loop. */
 export function useSplatvPlayback(period) {
-  const timeRef = useRef(0.5);
-  const mode = useRef('auto');
-  const direction = useRef(1);
+  const [initial] = useState(() => {
+    try { const raw = localStorage.getItem(PLAYBACK_STORAGE_KEY); return { ...restorePlayback(raw), raw }; }
+    catch { return { ...restorePlayback(null), raw: null }; }
+  });
+  const timeRef = useRef(initial.time);
+  const mode = useRef(initial.mode);
+  const direction = useRef(initial.direction);
+  const saveTimer = useRef(null);
+  const lastSaved = useRef(initial.raw);
   const last = useRef(0);
   const drag = useRef(null);
   const trackRef = useRef(null);
   const thumbRef = useRef(null);
   const labelRef = useRef(null);
+
+  function save() {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    const serialized = JSON.stringify({ mode: mode.current, time: timeRef.current, direction: direction.current });
+    if (serialized === lastSaved.current) return;
+    try { localStorage.setItem(PLAYBACK_STORAGE_KEY, serialized); lastSaved.current = serialized; }
+    catch { /* Storage unavailable: playback still works for this session. */ }
+  }
 
   function paint() {
     const value = timeRef.current;
@@ -32,15 +58,20 @@ export function useSplatvPlayback(period) {
     if (labelRef.current) labelRef.current.textContent = `${mode.current === 'auto' ? '自动' : '手动'} ${value.toFixed(2)}`;
   }
   function manual(value = timeRef.current) {
+    const changedMode = mode.current !== 'manual';
     mode.current = 'manual';
     timeRef.current = Math.max(0, Math.min(1, value));
     paint();
+    clearTimeout(saveTimer.current);
+    if (changedMode) save();
+    else saveTimer.current = setTimeout(save, 300);
   }
   function resume(event) {
     event.preventDefault();
     mode.current = 'auto';
     last.current = performance.now();
     paint();
+    save();
   }
   useEffect(() => {
     let raf;
@@ -59,6 +90,24 @@ export function useSplatvPlayback(period) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [period]);
+
+  useEffect(() => {
+    // Other cards/tabs share this preference. A stale viewer must not overwrite
+    // a newer interaction when all iframes unload together.
+    const flush = () => {
+      clearTimeout(saveTimer.current);
+      try { if (localStorage.getItem(PLAYBACK_STORAGE_KEY) !== lastSaved.current) return; } catch { return; }
+      save();
+    };
+    const onHidden = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onHidden);
+      flush();
+    };
+  }, []);
 
   function pointerDown(event) {
     if (event.button !== 0 || drag.current) return;
@@ -82,7 +131,7 @@ export function useSplatvPlayback(period) {
     manual(start.value + (event.clientX - start.x) / start.width);
   }
   function pointerEnd(event) {
-    if (drag.current?.id === event.pointerId) drag.current = null;
+    if (drag.current?.id === event.pointerId) { drag.current = null; save(); }
   }
   function keyDown(event) {
     const steps = { ArrowRight: 0.01, ArrowUp: 0.01, ArrowLeft: -0.01, ArrowDown: -0.01, PageUp: 0.1, PageDown: -0.1 };
@@ -92,5 +141,5 @@ export function useSplatvPlayback(period) {
     event.stopPropagation();
     manual(event.key === 'Home' ? 0 : event.key === 'End' ? 1 : timeRef.current + steps[event.key]);
   }
-  return { timeRef, trackRef, thumbRef, labelRef, pointerDown, pointerMove, pointerEnd, keyDown, resume, adjust: delta => manual(timeRef.current + delta) };
+  return { initial, timeRef, trackRef, thumbRef, labelRef, pointerDown, pointerMove, pointerEnd, keyDown, resume, adjust: delta => manual(timeRef.current + delta) };
 }

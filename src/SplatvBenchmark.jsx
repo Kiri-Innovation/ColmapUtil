@@ -235,14 +235,14 @@ export default function SplatvBenchmark() {
         <div className="splatv-help">拖拽旋转 · 滚轮缩放</div>
       </aside>}
       <div className="splatv-time-control nodrag nowheel" ref={timelineRef} tabIndex={0} aria-label="时间轴交互区域">
-        <span ref={playback.labelRef}>自动 0.50</span>
+        <span ref={playback.labelRef}>{playback.initial.mode === 'auto' ? '自动' : '手动'} {playback.initial.time.toFixed(2)}</span>
         <div className="splatv-time-track" ref={playback.trackRef}
           onPointerDown={playback.pointerDown} onPointerMove={playback.pointerMove}
           onPointerUp={playback.pointerEnd} onPointerCancel={playback.pointerEnd}
           onLostPointerCapture={playback.pointerEnd}>
           <button type="button" role="slider" className="splatv-time-thumb" ref={playback.thumbRef}
-            aria-label="4D Gaussian time" aria-valuemin={0} aria-valuemax={1} aria-valuenow={0.5}
-            aria-orientation="horizontal" data-mode="auto" style={{ left: '50%' }}
+            aria-label="4D Gaussian time" aria-valuemin={0} aria-valuemax={1} aria-valuenow={playback.initial.time}
+            aria-orientation="horizontal" data-mode={playback.initial.mode} style={{ left: `${playback.initial.time * 100}%` }}
             title="拖拽暂停；双击把手或按 Enter 恢复往复；方向键调整时间"
             onDoubleClick={playback.resume} onKeyDown={playback.keyDown} />
         </div>

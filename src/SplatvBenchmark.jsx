@@ -148,6 +148,16 @@ export default function SplatvBenchmark() {
     }
   }, [workflowManaged]);
 
+  const goHome = () => {
+    if (workflowManaged) {
+      applyView(workflowView ?? workflowFactoryRef.current);
+      return;
+    }
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(DEFAULT_VIEW_STORAGE_KEY) || 'null'); } catch { /* Use factory fallback. */ }
+    applyView(saved?.orbitTarget ? saved : factoryViewRef.current);
+  };
+
   const sceneManager = useMemo(() => {
     if (!src) return null;
     const scene = new SceneManager();
@@ -200,6 +210,12 @@ export default function SplatvBenchmark() {
         <svg width="20" height="20" viewBox="0 0 24 24" data-icon-design="helpers-ac-v1" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           {helpers === 'both' && <path d="m2 14 10-6 10 6-10 6Zm5-3 10 6M7 17l10-6" />}
           {helpers !== 'off' ? <path d="M10 14V3m0 11L2 19m8-5 11 5M8 5l2-2 2 2" /> : <><path strokeDasharray="1 3" d="M9 5v14m6-14v14M5 9h14M5 15h14" /><path strokeWidth="1.1" d="m7 7 10 10" /></>}
+        </svg>
+      </button>
+      <button type="button" className="splatv-helpers splatv-home nodrag nowheel"
+        aria-label="回到默认视角" title="回到默认视角" onClick={goHome} disabled={!cameraState}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m3 10 9-7 9 7M5 9v11h5v-6h4v6h5V9" />
         </svg>
       </button>
       <span className="splatv-build" data-debug={debug ? 'true' : 'false'} data-viewer-build={__VIEWER_BUILD_ID__}

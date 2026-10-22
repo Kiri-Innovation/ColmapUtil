@@ -35,10 +35,11 @@
 .splatv-helpers { position: absolute; z-index: 3; top: 6px; left: 6px; width: 32px; height: 32px; display: grid; place-items: center; padding: 0; color: #fff; background: transparent; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; }
 .splatv-helpers svg { filter: drop-shadow(0 1px 1px rgb(0 0 0 / 85%)); pointer-events: none; }
 .splatv-helpers:focus-visible { outline: 1px solid #fff; outline-offset: 1px; }
+.splatv-home { left: auto; right: 6px; }
 
 .splatv-build {
   position: absolute;
-  top: 5px;
+  top: 42px;
   right: 6px;
   z-index: 2;
   padding: 2px 4px;

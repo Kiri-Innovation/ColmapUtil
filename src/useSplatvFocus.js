@@ -50,6 +50,13 @@ export function useSplatvFocus(canvasRef, timelineRef, playback) {
       if (e.origin !== location.origin || e.source !== parent || e.data?.type !== 'hololab-viewer-focus-host') return;
       if (e.data.accent) timelineRef.current?.style.setProperty('--viewer-accent', e.data.accent);
       if (e.data.active === false) activate(null);
+      if (e.data.activate_at) {
+        const { x, y } = e.data.activate_at;
+        const hit = document.elementFromPoint(x * innerWidth, y * innerHeight);
+        if (timelineRef.current?.contains(hit)) activate('timeline');
+        else if (hit === canvasRef.current) activate('canvas');
+        else hit?.closest('button')?.click();
+      }
     };
     window.addEventListener('pointerdown', down, true);
     window.addEventListener('focusin', focus);

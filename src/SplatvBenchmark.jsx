@@ -5,6 +5,9 @@ import './SplatvBenchmark.css';
 import { useSplatvPlayback, playbackPeriod } from './useSplatvPlayback';
 
 const DEFAULT_VIEW_STORAGE_KEY = 'colmaputil.default_view';
+const HELPERS_KEY = 'colmaputil.splatv.helpers';
+const HELPER_MODES = ['both', 'axes', 'off'];
+const HELPER_LABELS = { both: '网格和坐标轴', axes: '仅坐标轴', off: '不显示辅助' };
 
 function readFileSize(url) {
   return fetch(url, { headers: { Range: 'bytes=0-0' } })
@@ -29,6 +32,15 @@ export default function SplatvBenchmark() {
   const src = new URLSearchParams(window.location.search).get('src');
   const showHud = new URLSearchParams(window.location.search).get('hud') === '1';
   const canvasRef = useRef(null);
+  const [helpers, setHelpers] = useState(() => {
+    try { const saved = localStorage.getItem(HELPERS_KEY); return HELPER_MODES.includes(saved) ? saved : 'both'; }
+    catch { return 'both'; }
+  });
+  const cycleHelpers = () => {
+    const next = HELPER_MODES[(HELPER_MODES.indexOf(helpers) + 1) % HELPER_MODES.length];
+    setHelpers(next);
+    try { localStorage.setItem(HELPERS_KEY, next); } catch { /* Session-only when storage is unavailable. */ }
+  };
   const startedAtRef = useRef(performance.now());
   const [fps, setFps] = useState(0);
   const [fileSize, setFileSize] = useState(null);
@@ -178,6 +190,14 @@ export default function SplatvBenchmark() {
 
   return (
     <main className="splatv-benchmark">
+      <button type="button" className="splatv-helpers nodrag nowheel" data-helper-mode={helpers}
+        aria-label={`辅助显示：${HELPER_LABELS[helpers]}；点击切换`}
+        title={`当前：${HELPER_LABELS[helpers]}；点击切换`} onClick={cycleHelpers}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {helpers === 'both' && <path d="M3 13 12 8 21 13 12 19Z M6 11.3 15 17.3 M9 9.7 18 15.7 M6 15 15 10 M9 17 18 12" />}
+          {helpers !== 'off' ? <path d="M12 13V3 M12 13 3 19 M12 13 21 19 M10 5 12 3 14 5" /> : <><path d="M7 17 12 13V5 M12 13 20 18" /><path d="M3 3 21 21" /></>}
+        </svg>
+      </button>
       <span className="splatv-build" data-viewer-build={__VIEWER_BUILD_ID__}
         title={`实际加载的 SplaTV 构建版本：${__VIEWER_BUILD_ID__}`}>
         {__VIEWER_BUILD_ID__}
@@ -213,6 +233,8 @@ export default function SplatvBenchmark() {
         cameraMode="orbit"
         fourDGaussianTime={0.5}
         fourDGaussianTimeRef={playback.timeRef}
+        showGrid={helpers === 'both'}
+        showAxes={helpers !== 'off'}
         onCameraStateReady={setCameraState}
         onLoadComplete={loaded}
         onError={(error) => setStatus(`加载失败：${error?.message || String(error)}`)}

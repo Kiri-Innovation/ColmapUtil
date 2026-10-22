@@ -68,6 +68,8 @@
 }
 
 .splatv-time-control > span { min-width: 68px; }
+.splatv-time-control { outline: none; }
+[data-active-focus="timeline"] .splatv-time-control { border-color: var(--viewer-accent, #009dff); box-shadow: 0 0 0 .5px var(--viewer-accent, #009dff); }
 .splatv-time-track { flex: 1; height: 24px; margin: 0 8px; position: relative; touch-action: none; cursor: pointer; }
 .splatv-time-track::before { content: ''; position: absolute; left: 0; right: 0; top: 10px; height: 4px; border-radius: 2px; background: #69717d; }
 .splatv-time-thumb { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 1px solid #e8edf7; background: #8bb9ff; cursor: grab; touch-action: none; }

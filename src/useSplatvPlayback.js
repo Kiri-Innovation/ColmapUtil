@@ -92,5 +92,5 @@ export function useSplatvPlayback(period) {
     event.stopPropagation();
     manual(event.key === 'Home' ? 0 : event.key === 'End' ? 1 : timeRef.current + steps[event.key]);
   }
-  return { timeRef, trackRef, thumbRef, labelRef, pointerDown, pointerMove, pointerEnd, keyDown, resume };
+  return { timeRef, trackRef, thumbRef, labelRef, pointerDown, pointerMove, pointerEnd, keyDown, resume, adjust: delta => manual(timeRef.current + delta) };
 }

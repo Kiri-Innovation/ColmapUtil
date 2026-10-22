@@ -3,6 +3,7 @@ import { HoloEngineRuntime, SceneManager } from '@holoengineruntime';
 import { ViewContextMenu } from './components/common/ViewContextMenu';
 import './SplatvBenchmark.css';
 import { useSplatvPlayback, playbackPeriod } from './useSplatvPlayback';
+import { useSplatvFocus } from './useSplatvFocus';
 
 const DEFAULT_VIEW_STORAGE_KEY = 'colmaputil.default_view';
 const HELPERS_KEY = 'colmaputil.splatv.helpers';
@@ -49,6 +50,8 @@ export default function SplatvBenchmark() {
   const [elapsed, setElapsed] = useState(0);
   const [firstFrameMs, setFirstFrameMs] = useState(null);
   const playback = useSplatvPlayback(playbackPeriod(new URLSearchParams(window.location.search).get('playback_period')));
+  const timelineRef = useRef(null);
+  const activeFocus = useSplatvFocus(canvasRef, timelineRef, playback);
   const [cameraState, setCameraState] = useState(null);
   const [workflowManaged, setWorkflowManaged] = useState(false);
   const [workflowView, setWorkflowView] = useState(null);
@@ -189,7 +192,7 @@ export default function SplatvBenchmark() {
   }
 
   return (
-    <main className="splatv-benchmark">
+    <main className="splatv-benchmark" data-active-focus={activeFocus ?? 'none'}>
       <button type="button" className="splatv-helpers nodrag nowheel" data-helper-mode={helpers}
         aria-label={`辅助显示：${HELPER_LABELS[helpers]}；点击切换`}
         title={`当前：${HELPER_LABELS[helpers]}；点击切换`} onClick={cycleHelpers}>
@@ -214,7 +217,7 @@ export default function SplatvBenchmark() {
         <div>{firstFrameMs === null ? `耗时 ${(elapsed / 1000).toFixed(1)} s` : `首帧 ${(firstFrameMs / 1000).toFixed(2)} s`}</div>
         <div className="splatv-help">拖拽旋转 · 滚轮缩放</div>
       </aside>}
-      <div className="splatv-time-control nodrag nowheel">
+      <div className="splatv-time-control nodrag nowheel" ref={timelineRef} tabIndex={0} aria-label="时间轴交互区域">
         <span ref={playback.labelRef}>自动 0.50</span>
         <div className="splatv-time-track" ref={playback.trackRef}
           onPointerDown={playback.pointerDown} onPointerMove={playback.pointerMove}

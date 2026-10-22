@@ -177,10 +177,15 @@ export default function SplatvBenchmark() {
 
   return (
     <main className="splatv-benchmark">
+      <span className="splatv-build" data-viewer-build={__VIEWER_BUILD_ID__}
+        title={`实际加载的 SplaTV 构建版本：${__VIEWER_BUILD_ID__}`}>
+        {__VIEWER_BUILD_ID__}
+      </span>
       <canvas ref={canvasRef} className="splatv-canvas" tabIndex={0} aria-label="SplaTV 3D view" onContextMenu={(event) => {
         event.preventDefault(); const view = captureView(); if (view) setCtxMenu({ x: event.clientX, y: event.clientY, view });
       }} />
       {showHud && <aside className="splatv-hud" aria-live="polite">
+        <div>Build {__VIEWER_BUILD_ID__}</div>
         <div><b>{status}</b></div>
         <div>FPS {fps}</div>
         <div>高斯 {vertexCount?.toLocaleString('en-US') ?? '—'}</div>

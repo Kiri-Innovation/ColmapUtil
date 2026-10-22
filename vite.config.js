@@ -3,11 +3,19 @@ import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import pkg from './package.json';
 
+const viewerBuild = `sv-${Date.now().toString(36)}`;
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), {
+    name: 'viewer-build-info',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'build-info.json', source: JSON.stringify({ build: viewerBuild }) });
+    },
+  }],
 
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+    __VIEWER_BUILD_ID__: JSON.stringify(viewerBuild),
   },
 
   resolve: {

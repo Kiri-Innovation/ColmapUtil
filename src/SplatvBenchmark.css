@@ -78,4 +78,5 @@
 .splatv-time-thumb { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 0; background: transparent; cursor: grab; touch-action: none; }
 .splatv-time-thumb::after { content: ''; position: absolute; width: 10px; height: 10px; left: 50%; top: 50%; transform: translate(-50%, -50%); box-sizing: border-box; border-radius: 50%; border: 1px solid #f1f1f1; background: #d4d4d4; pointer-events: none; }
 .splatv-time-thumb:active { cursor: grabbing; }
-.splatv-time-thumb:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.splatv-time-thumb:focus-visible { outline: none; }
+.splatv-time-thumb:focus-visible::after { box-shadow: 0 0 0 1px #fff; }

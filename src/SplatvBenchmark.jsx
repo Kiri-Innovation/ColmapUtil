@@ -32,6 +32,7 @@ function formatBytes(bytes) {
 export default function SplatvBenchmark() {
   const src = new URLSearchParams(window.location.search).get('src');
   const showHud = new URLSearchParams(window.location.search).get('hud') === '1';
+  const debug = new URLSearchParams(window.location.search).get('debug') === '1';
   const canvasRef = useRef(null);
   const [helpers, setHelpers] = useState(() => {
     try { const saved = localStorage.getItem(HELPERS_KEY); return HELPER_MODES.includes(saved) ? saved : 'both'; }
@@ -201,7 +202,7 @@ export default function SplatvBenchmark() {
           {helpers !== 'off' ? <path d="M10 14V3m0 11L2 19m8-5 11 5M8 5l2-2 2 2" /> : <><path strokeDasharray="1 3" d="M9 5v14m6-14v14M5 9h14M5 15h14" /><path strokeWidth="1.1" d="m7 7 10 10" /></>}
         </svg>
       </button>
-      <span className="splatv-build" data-viewer-build={__VIEWER_BUILD_ID__}
+      <span className="splatv-build" data-debug={debug ? 'true' : 'false'} data-viewer-build={__VIEWER_BUILD_ID__}
         title={`实际加载的 SplaTV 构建版本：${__VIEWER_BUILD_ID__}`}>
         {__VIEWER_BUILD_ID__}
       </span>

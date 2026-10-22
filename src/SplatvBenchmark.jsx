@@ -196,9 +196,9 @@ export default function SplatvBenchmark() {
       <button type="button" className="splatv-helpers nodrag nowheel" data-helper-mode={helpers}
         aria-label={`辅助显示：${HELPER_LABELS[helpers]}；点击切换`}
         title={`当前：${HELPER_LABELS[helpers]}；点击切换`} onClick={cycleHelpers}>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          {helpers === 'both' && <path d="M3 13 12 8 21 13 12 19Z M6 11.3 15 17.3 M9 9.7 18 15.7 M6 15 15 10 M9 17 18 12" />}
-          {helpers !== 'off' ? <path d="M12 13V3 M12 13 3 19 M12 13 21 19 M10 5 12 3 14 5" /> : <><path d="M7 17 12 13V5 M12 13 20 18" /><path d="M3 3 21 21" /></>}
+        <svg width="20" height="20" viewBox="0 0 24 24" data-icon-design="helpers-ac-v1" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {helpers === 'both' && <path d="m2 14 10-6 10 6-10 6Zm5-3 10 6M7 17l10-6" />}
+          {helpers !== 'off' ? <path d="M10 14V3m0 11L2 19m8-5 11 5M8 5l2-2 2 2" /> : <><path strokeDasharray="1 3" d="M9 5v14m6-14v14M5 9h14M5 15h14" /><path strokeWidth="1.1" d="m7 7 10 10" /></>}
         </svg>
       </button>
       <span className="splatv-build" data-viewer-build={__VIEWER_BUILD_ID__}

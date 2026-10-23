@@ -99,7 +99,7 @@ function useCanvasSize(canvasRef, containerRef, renderScaleRef) {
       const h = container.clientHeight;
       if (w <= 0 || h <= 0) return;
       const scale = renderScaleRef?.current ?? 1;
-      const size = CanvasRenderTarget.getRenderSize(w, h, (window.devicePixelRatio || 1) * scale);
+      const size = CanvasRenderTarget.getRenderSize(w, h, window.devicePixelRatio || 1, scale);
       if (canvas.width !== size.width) canvas.width = size.width;
       if (canvas.height !== size.height) canvas.height = size.height;
       canvas.style.width = `${w}px`;
@@ -216,8 +216,7 @@ export function ColmapVisualizer() {
       const d = event?.data;
       if (!d || typeof d !== 'object' || d.type !== 'set-render-scale') return;
       const raw = typeof d.scale === 'number' && Number.isFinite(d.scale) ? d.scale : 1;
-      const maxScale = 3 / (window.devicePixelRatio ?? 1);
-      renderScaleRef.current = Math.min(Math.max(0.25, raw), maxScale);
+      renderScaleRef.current = Math.max(0.25, raw);
       updateCanvasSizeRef.current?.();
     };
     window.addEventListener('message', handler);

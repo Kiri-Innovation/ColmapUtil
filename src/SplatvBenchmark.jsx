@@ -32,7 +32,7 @@ function formatBytes(bytes) {
 export default function SplatvBenchmark() {
   const src = new URLSearchParams(window.location.search).get('src');
   const staticPly = new URLSearchParams(window.location.search).get('format') === 'ply-3dgs';
-  const showHud = new URLSearchParams(window.location.search).get('hud') === '1';
+  const showHud = ['hud', 'debug'].some(key => new URLSearchParams(window.location.search).get(key) === '1');
   const debug = new URLSearchParams(window.location.search).get('debug') === '1';
   const canvasRef = useRef(null);
   const [helpers, setHelpers] = useState(() => {
@@ -230,7 +230,8 @@ export default function SplatvBenchmark() {
       {showHud && <aside className="splatv-hud" aria-live="polite">
         <div>Build {__VIEWER_BUILD_ID__}</div>
         <div><b>{status}</b></div>
-        <div>FPS {fps}</div>
+        <div>RAF FPS {fps}</div>
+        <div>Buffer {canvasRef.current?.width ?? 0} × {canvasRef.current?.height ?? 0}</div>
         <div>高斯 {vertexCount?.toLocaleString('en-US') ?? '—'}</div>
         <div>文件 {formatBytes(fileSize)}</div>
         <div>{firstFrameMs === null ? `耗时 ${(elapsed / 1000).toFixed(1)} s` : `首帧 ${(firstFrameMs / 1000).toFixed(2)} s`}</div>

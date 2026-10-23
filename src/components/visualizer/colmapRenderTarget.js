@@ -5,6 +5,10 @@
 import { CanvasRenderTarget } from '@holoengineruntime';
 
 export class ColmapCanvasRenderTarget extends CanvasRenderTarget {
+  constructor(canvas, gl) {
+    super(canvas, gl, { observeResize: false });
+  }
+
   beginFrame() {
     if (!this.canvas || !this.gl) return false;
     const gl = this.gl;

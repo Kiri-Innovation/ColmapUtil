@@ -1,3 +1,4 @@
+import { CanvasRenderTarget } from '@holoengineruntime';
 /**
  * 3D viewer: useWebGL + HoloRP pipeline. OverlayUI for UI.
  */
@@ -98,9 +99,9 @@ function useCanvasSize(canvasRef, containerRef, renderScaleRef) {
       const h = container.clientHeight;
       if (w <= 0 || h <= 0) return;
       const scale = renderScaleRef?.current ?? 1;
-      const dpr = Math.min((window.devicePixelRatio ?? 1) * scale, 3);
-      canvas.width = Math.floor(w * dpr);
-      canvas.height = Math.floor(h * dpr);
+      const size = CanvasRenderTarget.getRenderSize(w, h, (window.devicePixelRatio || 1) * scale);
+      if (canvas.width !== size.width) canvas.width = size.width;
+      if (canvas.height !== size.height) canvas.height = size.height;
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
     };
@@ -109,8 +110,10 @@ function useCanvasSize(canvasRef, containerRef, renderScaleRef) {
     updateSize();
     const ro = new ResizeObserver(updateSize);
     ro.observe(container);
+    window.addEventListener('resize', updateSize);
     return () => {
       ro.disconnect();
+      window.removeEventListener('resize', updateSize);
       updateSizeRef.current = null;
     };
   }, [canvasRef, containerRef]); // renderScaleRef is a ref (stable value) — intentionally omitted

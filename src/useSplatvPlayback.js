@@ -22,8 +22,9 @@ export function advancePlayback(value, direction, seconds, period) {
 }
 
 /** Viewer-owned animation; no React state updates in the frame loop. */
-export function useSplatvPlayback(period) {
+export function useSplatvPlayback(period, enabled = true) {
   const [initial] = useState(() => {
+    if (!enabled) return { mode: 'manual', time: 0.5, direction: 1, raw: null };
     try { const raw = localStorage.getItem(PLAYBACK_STORAGE_KEY); return { ...restorePlayback(raw), raw }; }
     catch { return { ...restorePlayback(null), raw: null }; }
   });
@@ -39,6 +40,7 @@ export function useSplatvPlayback(period) {
   const labelRef = useRef(null);
 
   function save() {
+    if (!enabled) return;
     clearTimeout(saveTimer.current);
     saveTimer.current = null;
     const serialized = JSON.stringify({ mode: mode.current, time: timeRef.current, direction: direction.current });
@@ -74,6 +76,7 @@ export function useSplatvPlayback(period) {
     save();
   }
   useEffect(() => {
+    if (!enabled) return;
     let raf;
     last.current = performance.now();
     const tick = now => {
@@ -89,9 +92,10 @@ export function useSplatvPlayback(period) {
     paint();
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [period]);
+  }, [period, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     // Other cards/tabs share this preference. A stale viewer must not overwrite
     // a newer interaction when all iframes unload together.
     const flush = () => {
@@ -107,7 +111,7 @@ export function useSplatvPlayback(period) {
       document.removeEventListener('visibilitychange', onHidden);
       flush();
     };
-  }, []);
+  }, [enabled]);
 
   function pointerDown(event) {
     if (event.button !== 0 || drag.current) return;

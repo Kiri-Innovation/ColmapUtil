@@ -31,6 +31,7 @@ function formatBytes(bytes) {
  */
 export default function SplatvBenchmark() {
   const src = new URLSearchParams(window.location.search).get('src');
+  const staticPly = new URLSearchParams(window.location.search).get('format') === 'ply-3dgs';
   const showHud = new URLSearchParams(window.location.search).get('hud') === '1';
   const debug = new URLSearchParams(window.location.search).get('debug') === '1';
   const canvasRef = useRef(null);
@@ -50,7 +51,7 @@ export default function SplatvBenchmark() {
   const [status, setStatus] = useState(src ? '加载、解析与首次深度排序中' : '缺少 src 参数');
   const [elapsed, setElapsed] = useState(0);
   const [firstFrameMs, setFirstFrameMs] = useState(null);
-  const playback = useSplatvPlayback(playbackPeriod(new URLSearchParams(window.location.search).get('playback_period')));
+  const playback = useSplatvPlayback(playbackPeriod(new URLSearchParams(window.location.search).get('playback_period')), !staticPly);
   const timelineRef = useRef(null);
   const activeFocus = useSplatvFocus(canvasRef, timelineRef, playback);
   const [cameraState, setCameraState] = useState(null);
@@ -161,9 +162,10 @@ export default function SplatvBenchmark() {
   const sceneManager = useMemo(() => {
     if (!src) return null;
     const scene = new SceneManager();
-    scene.addObject('benchmark-splatv', src, [0, 0, 0], [0, 0, 0], [1, 1, 1], null, 'splatv', '4dgs');
+    // Explicit type: proxy URLs need not end in .ply or .splatv.
+    scene.addObject('benchmark-splatv', src, [0, 0, 0], [0, 0, 0], [1, 1, 1], null, staticPly ? 'ply' : 'splatv', staticPly ? '3dgs' : '4dgs');
     return scene;
-  }, [src]);
+  }, [src, staticPly]);
 
   useEffect(() => {
     if (!src) return undefined;
@@ -234,7 +236,8 @@ export default function SplatvBenchmark() {
         <div>{firstFrameMs === null ? `耗时 ${(elapsed / 1000).toFixed(1)} s` : `首帧 ${(firstFrameMs / 1000).toFixed(2)} s`}</div>
         <div className="splatv-help">拖拽旋转 · 滚轮缩放</div>
       </aside>}
-      <div className="splatv-time-control nodrag nowheel" ref={timelineRef} tabIndex={0} aria-label="时间轴交互区域">
+      {staticPly && status.startsWith('加载失败') && <div className="splatv-hud" role="alert">{status}</div>}
+      {!staticPly && <div className="splatv-time-control nodrag nowheel" ref={timelineRef} tabIndex={0} aria-label="时间轴交互区域">
         <span ref={playback.labelRef}>{playback.initial.mode === 'auto' ? '自动' : '手动'} {playback.initial.time.toFixed(2)}</span>
         <div className="splatv-time-track" ref={playback.trackRef}
           onPointerDown={playback.pointerDown} onPointerMove={playback.pointerMove}
@@ -246,7 +249,7 @@ export default function SplatvBenchmark() {
             title="拖拽暂停；双击把手或按 Enter 恢复往复；方向键调整时间"
             onDoubleClick={playback.resume} onKeyDown={playback.keyDown} />
         </div>
-      </div>
+      </div>}
       <HoloEngineRuntime
         canvasRef={canvasRef}
         sceneManager={sceneManager}

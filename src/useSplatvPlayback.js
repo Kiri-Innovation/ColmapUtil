@@ -22,7 +22,9 @@ export function advancePlayback(value, direction, seconds, period) {
 }
 
 /** Viewer-owned animation; no React state updates in the frame loop. */
-export function useSplatvPlayback(period, enabled = true) {
+export function useSplatvPlayback(period, enabled = true, initiallySuspended = false) {
+  const [suspended, setSuspended] = useState(initiallySuspended);
+  const wasRunning = useRef(false);
   const [initial] = useState(() => {
     if (!enabled) return { mode: 'manual', time: 0.5, direction: 1, raw: null };
     try { const raw = localStorage.getItem(PLAYBACK_STORAGE_KEY); return { ...restorePlayback(raw), raw }; }
@@ -77,6 +79,12 @@ export function useSplatvPlayback(period, enabled = true) {
   }
   useEffect(() => {
     if (!enabled) return;
+    if (suspended) {
+      if (wasRunning.current) save();
+      wasRunning.current = false;
+      return;
+    }
+    wasRunning.current = true;
     let raf;
     last.current = performance.now();
     const tick = now => {
@@ -92,7 +100,7 @@ export function useSplatvPlayback(period, enabled = true) {
     paint();
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [period, enabled]);
+  }, [period, enabled, suspended]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -145,5 +153,5 @@ export function useSplatvPlayback(period, enabled = true) {
     event.stopPropagation();
     manual(event.key === 'Home' ? 0 : event.key === 'End' ? 1 : timeRef.current + steps[event.key]);
   }
-  return { initial, timeRef, trackRef, thumbRef, labelRef, pointerDown, pointerMove, pointerEnd, keyDown, resume, adjust: delta => manual(timeRef.current + delta) };
+  return { initial, timeRef, setSuspended, trackRef, thumbRef, labelRef, pointerDown, pointerMove, pointerEnd, keyDown, resume, adjust: delta => manual(timeRef.current + delta) };
 }

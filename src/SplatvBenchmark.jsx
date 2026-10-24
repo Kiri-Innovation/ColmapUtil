@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HoloEngineRuntime, SceneManager } from '@holoengineruntime';
 import { ViewContextMenu } from './components/common/ViewContextMenu';
 import './SplatvBenchmark.css';
@@ -51,9 +51,11 @@ export default function SplatvBenchmark() {
   const [status, setStatus] = useState(src ? '加载、解析与首次深度排序中' : '缺少 src 参数');
   const [elapsed, setElapsed] = useState(0);
   const [firstFrameMs, setFirstFrameMs] = useState(null);
-  const playback = useSplatvPlayback(playbackPeriod(new URLSearchParams(window.location.search).get('playback_period')), !staticPly);
+  const playback = useSplatvPlayback(playbackPeriod(new URLSearchParams(window.location.search).get('playback_period')), !staticPly, true);
   const timelineRef = useRef(null);
   const activeFocus = useSplatvFocus(canvasRef, timelineRef, playback);
+  useEffect(() => { playback.setSuspended(activeFocus === null); }, [activeFocus, playback.setSuspended]);
+  const [redrawVersion, setRedrawVersion] = useState(0);
   const [cameraState, setCameraState] = useState(null);
   const [workflowManaged, setWorkflowManaged] = useState(false);
   const [workflowView, setWorkflowView] = useState(null);
@@ -93,7 +95,13 @@ export default function SplatvBenchmark() {
     const yaw = Number(view.yaw) || 0, pitch = Number(view.pitch) || 0;
     const fwdH = [-Math.sin(yaw), 0, -Math.cos(yaw)];
     const fwd = [fwdH[0] * Math.cos(pitch), Math.sin(pitch), fwdH[2] * Math.cos(pitch)];
-    cam._position = [target[0] - fwd[0] * view.orbitRadius, target[1] - fwd[1] * view.orbitRadius, target[2] - fwd[2] * view.orbitRadius];
+    const position = [target[0] - fwd[0] * view.orbitRadius, target[1] - fwd[1] * view.orbitRadius, target[2] - fwd[2] * view.orbitRadius];
+    const fov = Number.isFinite(view.fov) ? view.fov : cam.targetVerticalFOV;
+    if (position.every((v, i) => Math.abs(v - cam._position[i]) < 1e-9)
+      && target.every((v, i) => Math.abs(v - state.orbitTargetRef.current[i]) < 1e-9)
+      && cam.targetVerticalFOV === fov && state.orbitDistanceRef.current === view.orbitRadius
+      && state.orbitTargetDistanceRef.current === view.orbitRadius) return;
+    cam._position = position;
     cam._forwardHorizontalRef = fwdH;
     cam._yawRad = 0; cam._pitchRad = pitch;
     cam.targetVerticalFOV = Number.isFinite(view.fov) ? view.fov : cam.targetVerticalFOV;
@@ -101,6 +109,7 @@ export default function SplatvBenchmark() {
     state.orbitTargetRef.current = [...target];
     state.orbitDistanceRef.current = view.orbitRadius;
     state.orbitTargetDistanceRef.current = view.orbitRadius;
+    setRedrawVersion(version => version + 1);
   }, [cameraState]);
 
   useEffect(() => {
@@ -168,13 +177,14 @@ export default function SplatvBenchmark() {
   }, [src, staticPly]);
 
   useEffect(() => {
-    if (!src) return undefined;
+    if (!src || firstFrameMs !== null) return undefined;
     readFileSize(src).then(setFileSize);
     const timer = window.setInterval(() => setElapsed(performance.now() - startedAtRef.current), 100);
     return () => window.clearInterval(timer);
-  }, [src]);
+  }, [src, firstFrameMs]);
 
   useEffect(() => {
+    if (activeFocus === null || !showHud) return;
     let frameCount = 0;
     let windowStartedAt = performance.now();
     let raf = 0;
@@ -189,16 +199,17 @@ export default function SplatvBenchmark() {
     };
     raf = requestAnimationFrame(sample);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [activeFocus, showHud]);
 
-  const loaded = () => {
+  const loaded = useCallback(() => {
     const model = sceneManager?.getObject('benchmark-splatv');
     setVertexCount(model?.vertexCount ?? null);
     const duration = performance.now() - startedAtRef.current;
     setFirstFrameMs(duration);
     setElapsed(duration);
     setStatus('首帧已就绪');
-  };
+  }, [sceneManager]);
+  const loadError = useCallback(error => setStatus(`加载失败：${error?.message || String(error)}`), []);
 
   if (!src) {
     return <main className="splatv-benchmark"><div className="splatv-hud">需要：?embed=splatv&amp;src=&lt;.splatv URL&gt;</div></main>;
@@ -252,6 +263,8 @@ export default function SplatvBenchmark() {
         </div>
       </div>}
       <HoloEngineRuntime
+        suspended={activeFocus === null}
+        redrawVersion={redrawVersion}
         canvasRef={canvasRef}
         sceneManager={sceneManager}
         cameraMode="orbit"
@@ -261,7 +274,7 @@ export default function SplatvBenchmark() {
         showAxes={helpers !== 'off'}
         onCameraStateReady={setCameraState}
         onLoadComplete={loaded}
-        onError={(error) => setStatus(`加载失败：${error?.message || String(error)}`)}
+        onError={loadError}
       />
       {ctxMenu && <ViewContextMenu
         x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)}

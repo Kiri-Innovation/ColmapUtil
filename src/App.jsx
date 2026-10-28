@@ -338,7 +338,9 @@ function MainLayout() {
 
   return (
     <>
-      {mobile ? <MobileMessage /> : (
+      {/* The standalone-only drag-and-drop guidance must never replace an
+          embedded visualizer; its host supplies data and owns the layout. */}
+      {!embedMode && mobile ? <MobileMessage /> : (
     <div style={{
       width: '100%',
       height: '100vh',

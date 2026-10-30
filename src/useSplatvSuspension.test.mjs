@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 // Deterministic hook harness: execute the production playback body, with a
 // controllable RAF clock and React hook lifecycle (no real-time sleeps).
-function harness(enabled = true) {
+function harness(enabled = true, storageKey) {
   const slots = [], effects = [], rafs = new Map(), writes = [];
   let index = 0, now = 0, nextId = 0, api;
   const context = {
@@ -29,7 +29,7 @@ function harness(enabled = true) {
     .replace(/^import[^\n]*\n/, '').replaceAll('export ', '');
   vm.createContext(context);
   vm.runInContext(source + '\nthis.makePlayback = useSplatvPlayback;', context);
-  const render = () => { index = 0; api = context.makePlayback(8, enabled, true); while (effects.length) effects.shift()(); return api; };
+  const render = () => { index = 0; api = context.makePlayback(8, enabled, true, storageKey); while (effects.length) effects.shift()(); return api; };
   render();
   return { get api() { return api; }, rafs, writes,
     suspend(value) { api.setSuspended(value); render(); },
@@ -61,4 +61,14 @@ test('manual remains manual across pause/resume; explicit resume restores auto',
 test('static PLY never runs playback or writes its preference', () => {
   const h = harness(false); h.suspend(false); h.step(10000); h.suspend(true);
   assert.equal(h.rafs.size, 0); assert.equal(h.writes.length, 0);
+});
+
+
+test('FTGS playback persists independently of the SplaTV preference', () => {
+  const ftgs = harness(true, 'colmaputil.ftgsply.playback');
+  ftgs.api.adjust(.1);
+  assert.equal(ftgs.writes.at(-1).key, 'colmaputil.ftgsply.playback');
+  const splatv = harness();
+  splatv.api.adjust(.1);
+  assert.equal(splatv.writes.at(-1).key, 'colmaputil.splatv.playback');
 });

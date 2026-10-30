@@ -27,7 +27,7 @@ function formatBytes(bytes) {
 
 /**
  * Deliberately small performance harness. It is selected only by
- * `?embed=splatv&src=...`; the normal COLMAP application is untouched.
+ * `?embed=splatv&src=...` or `?embed=ftgsply&src=...`; the normal COLMAP application is untouched.
  */
 export default function SplatvBenchmark() {
   const src = new URLSearchParams(window.location.search).get('src');
@@ -173,7 +173,8 @@ export default function SplatvBenchmark() {
   const sceneManager = useMemo(() => {
     if (!src) return null;
     const scene = new SceneManager();
-    // Explicit type: proxy URLs need not end in .ply or .splatv.
+    // FTGS retains its .ftgs.ply pathname for the native loader contract.
+    // The legacy SplaTV/static PLY entries still support opaque proxy URLs.
     scene.addObject('benchmark-splatv', src, [0, 0, 0], [0, 0, 0], [1, 1, 1], null, staticPly || ftgsPly ? 'ply' : 'splatv', staticPly ? '3dgs' : '4dgs');
     return scene;
   }, [src, staticPly, ftgsPly]);

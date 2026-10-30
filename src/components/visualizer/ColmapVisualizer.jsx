@@ -1,3 +1,4 @@
+import { CanvasRenderTarget } from '@holoengineruntime';
 /**
  * 3D viewer: useWebGL + HoloRP pipeline. OverlayUI for UI.
  */
@@ -18,6 +19,7 @@ import {
   Camera,
   createPointCloudObject,
   createPointCloudBuffers,
+  rebaseToSecondsF32,
   createLinesObject,
   updateLinesObject,
   MaterialFactory,
@@ -25,7 +27,9 @@ import {
 import { ColmapCanvasRenderTarget } from './colmapRenderTarget';
 import { buildFrustumLinesGeometry } from '@/utils/frustumLinesGeometry';
 import { buildImagePlaneMeshObjects } from '@/utils/imagePlaneMeshObjects';
+import { computeTimeRange, resolveTimeWindow } from '@/utils/timeAxis';
 import { OverlayUI } from './OverlayUI';
+import { ViewContextMenu } from '../common/ViewContextMenu';
 import { useAppContext, useSelection, useNavigation, useUI } from '@/AppContext';
 import { useSetting, settings } from '../../utils/settings';
 import { ImageTextureManager } from './ImageTextureManager.js';
@@ -48,11 +52,26 @@ const IMAGE_PLANE_ALPHA_MATCHED_SELECTED = 0.7;
 /** 有 Colmap 数据时：cameraSpeedMultiplier = _SPEED_MULTIPLIER * magnitudeD；无数据时用 0.5 */
 const _SPEED_MULTIPLIER = 0.05;
 
+// Factory-default orbit view applied on every mount when no localStorage override exists.
+// pos=[11.87,-5.46,-2.15], orbitTarget=[5.33,-0.54,4.51].
+// yaw  = atan2(-dx,-dz) = atan2(6.54,-6.66) ≈ 2.365 rad  (convention: fwdH=[-sin(y),0,-cos(y)])
+// pitch = arcsin(dy/|d|) = arcsin(4.92/10.55) ≈ 0.485 rad
+const FACTORY_VIEW = {
+  v: 2,
+  mode: 'orbit',
+  pos: [11.87, -5.46, -2.15],
+  yaw: 2.365,
+  pitch: 0.485,
+  fov: 60,
+  orbitTarget: [5.33, -0.54, 4.51],
+  orbitRadius: 10.55,
+};
+
 const DEFAULT_CAMERA = {
   id: 0,
   width: 1920,
   height: 1080,
-  position: [0, 0, 15],
+  position: [10.34, -6.16, -8.86],
   rotation: [
     [1, 0, 0],
     [0, 1, 0],
@@ -61,12 +80,14 @@ const DEFAULT_CAMERA = {
   fx: 1000,
   fy: 1000,
   yawRad: 0,
-  pitchRad: 0,
+  pitchRad: 0.42,
   forwardHorizontalRef: [0, 0, -1],
   worldUp: [0, 1, 0],
 };
 
-function useCanvasSize(canvasRef, containerRef) {
+function useCanvasSize(canvasRef, containerRef, renderScaleRef) {
+  const updateSizeRef = useRef(null);
+
   useEffect(() => {
     const canvas = canvasRef?.current;
     const container = containerRef?.current;
@@ -77,18 +98,27 @@ function useCanvasSize(canvasRef, containerRef) {
       const w = container.clientWidth;
       const h = container.clientHeight;
       if (w <= 0 || h <= 0) return;
-      const dpr = Math.min(window.devicePixelRatio ?? 1, 2);
-      canvas.width = Math.floor(w * dpr);
-      canvas.height = Math.floor(h * dpr);
+      const scale = renderScaleRef?.current ?? 1;
+      const size = CanvasRenderTarget.getRenderSize(w, h, window.devicePixelRatio || 1, scale);
+      if (canvas.width !== size.width) canvas.width = size.width;
+      if (canvas.height !== size.height) canvas.height = size.height;
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
     };
 
+    updateSizeRef.current = updateSize;
     updateSize();
     const ro = new ResizeObserver(updateSize);
     ro.observe(container);
-    return () => ro.disconnect();
-  }, [canvasRef, containerRef]);
+    window.addEventListener('resize', updateSize);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', updateSize);
+      updateSizeRef.current = null;
+    };
+  }, [canvasRef, containerRef]); // renderScaleRef is a ref (stable value) — intentionally omitted
+
+  return updateSizeRef;
 }
 
 export function ColmapVisualizer() {
@@ -109,6 +139,9 @@ export function ColmapVisualizer() {
   const { navigationHistory } = useNavigation();
   const { imageDetailId, openImageDetail, showMatchesInModal, matchedImageId, setMatchedImageId } = useUI();
   
+  const { addToast } = useAppContext();
+  const [ctxMenu, setCtxMenu] = useState(null); // {x, y, view}
+
   // Settings
   const [backgroundColor] = useSetting('ui', 'backgroundColor');
   const [axesDisplayMode] = useSetting('ui', 'axesDisplayMode');
@@ -129,12 +162,33 @@ export function ColmapVisualizer() {
   const [colorMode] = useSetting('pointCloud', 'colorMode');
   const [errorGamma] = useSetting('pointCloud', 'errorGamma');
   const [trackLengthGamma] = useSetting('pointCloud', 'trackLengthGamma');
-  
+  const [renderMode] = useSetting('pointCloud', 'renderMode'); // 'cpu' | 'gpu' (colmap4d time path)
+  // colmap4d time axis (fractions of the model time range)
+  const [timePosFrac] = useSetting('time', 'posFrac');
+  const [timeSigmaFrac] = useSetting('time', 'sigmaFrac'); // shared window: points AND cameras
+  const [timeSoftFrac] = useSetting('time', 'softFrac');   // soft-ramp band (points + cameras)
+
   // Colmap data (Context)
   const { colmapData, loadedFiles } = useAppContext();
   /** false = NoImage / 仅有 sparse、无栅格图：不显视锥图像平面、不解码纹理 */
   const frustumRasterOk = loadedFiles?.canResolveRasterImages !== false;
-  
+
+  // colmap4d time window (CPU-side): derive absolute ns from stored fractions + model range.
+  const timeRange = useMemo(() => computeTimeRange(colmapData), [colmapData]);
+  const { currentNs, pointSigmaNs, pointSoftNs } = useMemo(
+    () =>
+      resolveTimeWindow(timeRange, {
+        posFrac: timePosFrac,
+        sigmaFrac: timeSigmaFrac,
+        softFrac: timeSoftFrac,
+      }),
+    [timeRange, timePosFrac, timeSigmaFrac, timeSoftFrac]
+  );
+  const timeActive = timeRange.hasTime;
+  // Cameras share the point cloud's lifecycle: soft ramp only when points are also soft (GPU
+  // point path). In CPU point mode points hard-cut, so cameras hard-cut too (camSoftNs = 0).
+  const camSoftNs = renderMode === 'gpu' ? pointSoftNs : 0;
+
   // Temporary UI state
   const [hoveredImageId, setHoveredImageId] = useState(null);
   const [hoveredImageCardPos, setHoveredImageCardPos] = useState(null);
@@ -153,7 +207,21 @@ export function ColmapVisualizer() {
   const cameraRef = useRef(defaultCamera);
   const camerasRef = useRef([defaultCamera]);
 
-  useCanvasSize(canvasRef, containerRef);
+  const renderScaleRef = useRef(1);
+  const updateCanvasSizeRef = useCanvasSize(canvasRef, containerRef, renderScaleRef);
+
+  // `set-render-scale` from the HoloLab parent: scale canvas DPR with xyflow zoom.
+  useEffect(() => {
+    const handler = (event) => {
+      const d = event?.data;
+      if (!d || typeof d !== 'object' || d.type !== 'set-render-scale') return;
+      const raw = typeof d.scale === 'number' && Number.isFinite(d.scale) ? d.scale : 1;
+      renderScaleRef.current = Math.max(0.25, raw);
+      updateCanvasSizeRef.current?.();
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []); // stable refs — no deps
 
   const {
     gl,
@@ -267,13 +335,13 @@ export function ColmapVisualizer() {
     null, // onNotifyUserInput
     false, // disableLeftMouseButton
     cameraSpeedMultiplier,
-    15, // initialOrbitRadius
+    12.69, // initialOrbitRadius — matches FACTORY_VIEW.orbitRadius
     0.6, // minOrbitRadius
     isOrbitMode
   );
   
   const { updateCameraFromInput: fpsUpdateCameraFromInput, focusOnTarget: fpsFocusOnTarget } = fpsControls;
-  const { updateCameraFromInput: orbitUpdateCameraFromInput, focusOnTarget: orbitFocusOnTarget } = orbitControls;
+  const { updateCameraFromInput: orbitUpdateCameraFromInput, focusOnTarget: orbitFocusOnTarget, orbitTargetRef, orbitDistanceRef } = orbitControls;
   
   // updateCameraFromInput by mode
   const updateCameraFromInput = isOrbitMode ? orbitUpdateCameraFromInput : fpsUpdateCameraFromInput;
@@ -462,8 +530,10 @@ export function ColmapVisualizer() {
     return colmapData.pointCloudIdsByImage.get(selectedImageId) ?? new Set();
   }, [colmapData, selectedImageId]);
 
-  // Point cloud: split unselected vs selected; color by colorMode (rgb / error / trackLength)
-  const pointCloudData = useMemo(() => {
+  // Base point cloud: full arrays + split by selection + per-point rebased-seconds time
+  // (−1 = temporally-unbounded). NO time filtering here and NO scrubber deps, so the heavy
+  // buffer build does NOT re-run when the scrubber moves (that is what the GPU path needs).
+  const basePointData = useMemo(() => {
     if (!colmapData) {
       return {
         unselectedPositions: null,
@@ -496,6 +566,10 @@ export function ColmapVisualizer() {
     allErrors = new Float32Array(n);
     allTrackLengths = new Uint32Array(n);
     allPoint3DIds = new Array(n);
+    // Per-point time as float32 relative seconds (t − t0)/1e9; −1 = temporally-unbounded
+    // (always shown). Same encoding the GPU shader expects (POINT_TIME_TIMELESS = −1).
+    const t0Ns = timeRange.minNs;
+    const allTimes = new Float32Array(n);
     let i = 0;
     for (const p of pointCloud.values()) {
       allPositions[i * 3] = p.xyz[0];
@@ -507,6 +581,7 @@ export function ColmapVisualizer() {
       allErrors[i] = p.error ?? 0;
       allTrackLengths[i] = p.track?.length ?? 0;
       allPoint3DIds[i] = p.point3DId;
+      allTimes[i] = rebaseToSecondsF32(p.t, t0Ns);
       i++;
     }
 
@@ -599,22 +674,48 @@ export function ColmapVisualizer() {
 
     const unselectedPositions = [];
     const unselectedColors = [];
+    const unselectedTimes = [];
     const selectedPositions = [];
     const selectedColors = [];
+    const selectedTimes = [];
 
     const hasSelection = selectedImageId !== null && selectedImagePointIds.size > 0;
+
+    // colmap4d: the "dim non-observed points" highlight is a covisibility feature that assumes
+    // one model. Per-frame imports don't share tracks across frames, so selecting any one frame's
+    // camera would dim EVERY other frame (the whole timeline goes dark). In timeActive mode, dim
+    // ONLY same-frame non-observed points; other frames (and timeless points) stay full brightness.
+    // (t0Ns is the rebase origin already computed above for allTimes.)
+    const selectedFrameSec =
+      hasSelection && timeActive
+        ? rebaseToSecondsF32(colmapData.images.get(selectedImageId)?.t, t0Ns)
+        : null;
+    const SAME_FRAME_TOL_SEC = 1e-3; // 1e6 ns; frames are ~33 ms apart, so this cleanly isolates one
 
     for (let i = 0; i < pointCount; i++) {
       const point3DId = allPoint3DIds ? allPoint3DIds[i] : BigInt(i + 1);
       const isSelected = hasSelection && selectedImagePointIds.has(point3DId);
-      
+
+      // Decide whether this point is dimmed by the current selection.
+      let dim;
+      if (!hasSelection || isSelected) {
+        dim = false;
+      } else if (selectedFrameSec !== null) {
+        // timeActive: only dim points in the selected camera's own frame (timeless t < 0 → bright)
+        const t = allTimes[i];
+        dim = t >= 0 && Math.abs(t - selectedFrameSec) <= SAME_FRAME_TOL_SEC;
+      } else {
+        dim = true; // legacy single-model behavior (no time axis): dim all non-observed points
+      }
+
       const posBase = i * 3;
       const position = [allPositions[posBase], allPositions[posBase + 1], allPositions[posBase + 2]];
       const colorBase = i * 3;
-      
-      if (isSelected || !hasSelection) {
+
+      if (!dim) {
         selectedPositions.push(...position);
         selectedColors.push(allColors[colorBase], allColors[colorBase + 1], allColors[colorBase + 2]);
+        selectedTimes.push(allTimes[i]);
       } else {
         unselectedPositions.push(...position);
         unselectedColors.push(
@@ -622,15 +723,18 @@ export function ColmapVisualizer() {
           allColors[colorBase + 1] * UNSELECTED_POINT_COLOR_MULTIPLIER,  // G * multiplier
           allColors[colorBase + 2] * UNSELECTED_POINT_COLOR_MULTIPLIER   // B * multiplier
         );
+        unselectedTimes.push(allTimes[i]);
       }
     }
 
     return {
-      // Split data for rendering
+      // Split data for rendering (unfiltered; times in rebased seconds, −1 = timeless)
       unselectedPositions: unselectedPositions.length > 0 ? new Float32Array(unselectedPositions) : null,
       unselectedColors: unselectedColors.length > 0 ? new Float32Array(unselectedColors) : null,
+      unselectedTimes: unselectedTimes.length > 0 ? new Float32Array(unselectedTimes) : null,
       selectedPositions: selectedPositions.length > 0 ? new Float32Array(selectedPositions) : null,
       selectedColors: selectedColors.length > 0 ? new Float32Array(selectedColors) : null,
+      selectedTimes: selectedTimes.length > 0 ? new Float32Array(selectedTimes) : null,
       // Full data for hover (preserve indices)
       positions: allPositions,
       colors: allColors,
@@ -638,49 +742,91 @@ export function ColmapVisualizer() {
       errors: allErrors,
       trackLengths: allTrackLengths,
     };
-  }, [colmapData, selectedImagePointIds, colorMode, errorGamma, trackLengthGamma]);
+  }, [colmapData, selectedImageId, selectedImagePointIds, timeActive, colorMode, errorGamma, trackLengthGamma, timeRange.minNs]);
+
+  // Final point data the buffers consume. GPU mode (or no time): pass base through unchanged
+  // (stable reference ⇒ no re-upload while scrubbing; the shader discards out-of-window points).
+  // CPU mode: rebuild the split arrays dropping out-of-window points (points with time −1 are
+  // temporally-unbounded and always kept). Window is in rebased seconds to match basePointData.
+  const pointCloudData = useMemo(() => {
+    if (renderMode === 'gpu' || !timeActive) return basePointData;
+    const curSec = (currentNs - timeRange.minNs) / 1e9;
+    const sigSec = pointSigmaNs / 1e9;
+    const filterSplit = (positions, colors, times) => {
+      if (!positions || !times) return { positions, colors };
+      const outP = [];
+      const outC = [];
+      for (let i = 0; i < times.length; i++) {
+        const t = times[i];
+        if (t >= 0 && Math.abs(t - curSec) > sigSec) continue;
+        outP.push(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+        outC.push(colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]);
+      }
+      return {
+        positions: outP.length > 0 ? new Float32Array(outP) : null,
+        colors: outC.length > 0 ? new Float32Array(outC) : null,
+      };
+    };
+    const uns = filterSplit(basePointData.unselectedPositions, basePointData.unselectedColors, basePointData.unselectedTimes);
+    const sel = filterSplit(basePointData.selectedPositions, basePointData.selectedColors, basePointData.selectedTimes);
+    return {
+      ...basePointData,
+      unselectedPositions: uns.positions,
+      unselectedColors: uns.colors,
+      selectedPositions: sel.positions,
+      selectedColors: sel.colors,
+    };
+  }, [basePointData, renderMode, timeActive, currentNs, pointSigmaNs, timeRange.minNs]);
 
   // Update unselected point cloud
   useEffect(() => {
     const obj = pointCloudObjRef.current;
     if (!obj || !gl) return;
-    const { unselectedPositions, unselectedColors } = pointCloudData;
+    const { unselectedPositions, unselectedColors, unselectedTimes } = pointCloudData;
     if (!unselectedPositions || !unselectedColors || !showPointCloud) {
       if (obj.pointPositionBuffer) { gl.deleteBuffer(obj.pointPositionBuffer); obj.pointPositionBuffer = null; }
       if (obj.pointColorBuffer) { gl.deleteBuffer(obj.pointColorBuffer); obj.pointColorBuffer = null; }
+      if (obj.pointTimeBuffer) { gl.deleteBuffer(obj.pointTimeBuffer); obj.pointTimeBuffer = null; }
       obj.pointCount = 0;
       obj.ready = false;
       return;
     }
-    const { pointPositionBuffer, pointColorBuffer, pointCount } = createPointCloudBuffers(gl, unselectedPositions, unselectedColors);
+    const times = renderMode === 'gpu' ? unselectedTimes : null;
+    const { pointPositionBuffer, pointColorBuffer, pointTimeBuffer, pointCount } = createPointCloudBuffers(gl, unselectedPositions, unselectedColors, times);
     if (obj.pointPositionBuffer) gl.deleteBuffer(obj.pointPositionBuffer);
     if (obj.pointColorBuffer) gl.deleteBuffer(obj.pointColorBuffer);
+    if (obj.pointTimeBuffer) gl.deleteBuffer(obj.pointTimeBuffer);
     obj.pointPositionBuffer = pointPositionBuffer;
     obj.pointColorBuffer = pointColorBuffer;
+    obj.pointTimeBuffer = pointTimeBuffer;
     obj.pointCount = pointCount;
     obj.ready = pointCount > 0;
-  }, [gl, pointCloudData, showPointCloud]);
+  }, [gl, pointCloudData, showPointCloud, renderMode]);
 
   // Update selected point cloud
   useEffect(() => {
     const obj = selectedPointCloudObjRef.current;
     if (!obj || !gl) return;
-    const { selectedPositions, selectedColors } = pointCloudData;
+    const { selectedPositions, selectedColors, selectedTimes } = pointCloudData;
     if (!selectedPositions || !selectedColors || !showPointCloud) {
       if (obj.pointPositionBuffer) { gl.deleteBuffer(obj.pointPositionBuffer); obj.pointPositionBuffer = null; }
       if (obj.pointColorBuffer) { gl.deleteBuffer(obj.pointColorBuffer); obj.pointColorBuffer = null; }
+      if (obj.pointTimeBuffer) { gl.deleteBuffer(obj.pointTimeBuffer); obj.pointTimeBuffer = null; }
       obj.pointCount = 0;
       obj.ready = false;
       return;
     }
-    const { pointPositionBuffer, pointColorBuffer, pointCount } = createPointCloudBuffers(gl, selectedPositions, selectedColors);
+    const times = renderMode === 'gpu' ? selectedTimes : null;
+    const { pointPositionBuffer, pointColorBuffer, pointTimeBuffer, pointCount } = createPointCloudBuffers(gl, selectedPositions, selectedColors, times);
     if (obj.pointPositionBuffer) gl.deleteBuffer(obj.pointPositionBuffer);
     if (obj.pointColorBuffer) gl.deleteBuffer(obj.pointColorBuffer);
+    if (obj.pointTimeBuffer) gl.deleteBuffer(obj.pointTimeBuffer);
     obj.pointPositionBuffer = pointPositionBuffer;
     obj.pointColorBuffer = pointColorBuffer;
+    obj.pointTimeBuffer = pointTimeBuffer;
     obj.pointCount = pointCount;
     obj.ready = pointCount > 0;
-  }, [gl, pointCloudData, showPointCloud]);
+  }, [gl, pointCloudData, showPointCloud, renderMode]);
 
   useEffect(() => {
     const obj = pointCloudObjRef.current;
@@ -690,6 +836,26 @@ export function ColmapVisualizer() {
     obj.pointSize = size;
     selectedObj.pointSize = size;
   }, [pointSize]);
+
+  // GPU time gating uniforms (colmap4d): drive obj.timeCurrent/timeSigma each scrub tick.
+  // The continuous RAF loop reads these next frame, so no per-frame JS work. In CPU mode
+  // (or no time) timeEnabled=false ⇒ shader is bit-identical to the pre-4D path (zero regression).
+  useEffect(() => {
+    const obj = pointCloudObjRef.current;
+    const selectedObj = selectedPointCloudObjRef.current;
+    if (!obj || !selectedObj) return;
+    const gpuTime = renderMode === 'gpu' && timeActive;
+    const currentSec = (currentNs - timeRange.minNs) / 1e9;
+    const sigmaSec = pointSigmaNs / 1e9;
+    const span = Math.max(0, timeRange.maxNs - timeRange.minNs);
+    const softSec = (timeSoftFrac * span) / 1e9;
+    for (const o of [obj, selectedObj]) {
+      o.timeEnabled = gpuTime;
+      o.timeCurrent = currentSec;
+      o.timeSigma = sigmaSec;
+      o.timeSoftSigma = softSec;
+    }
+  }, [renderMode, timeActive, currentNs, pointSigmaNs, timeSoftFrac, timeRange.minNs, timeRange.maxNs]);
 
   const imageFrameIndexMap = useMemo(() => {
     const m = new Map();
@@ -753,9 +919,12 @@ export function ColmapVisualizer() {
       matchedImageIds: new Set(),
       frustumColorMode,
       imageFrameIndexMap,
+      currentTimeNs: timeActive ? currentNs : null,
+      sigmaNs: timeActive ? pointSigmaNs : Infinity,
+      softNs: timeActive ? camSoftNs : 0,
     });
     updateLinesObject(gl, linesObj, positions, colors);
-  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, hoveredImageId, matchedCameraIds, frustumColorMode, imageFrameIndexMap]);
+  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, hoveredImageId, matchedCameraIds, frustumColorMode, imageFrameIndexMap, timeActive, currentNs, pointSigmaNs, camSoftNs]);
 
   // Update matched camera frustums (white, alpha 0.5)
   useEffect(() => {
@@ -906,7 +1075,22 @@ export function ColmapVisualizer() {
 
     if (!frustums.length) return;
 
-    const list = buildImagePlaneMeshObjects(gl, frustums, textureMapRef.current, {
+    // colmap4d time gating for image planes: share the point cloud window (pointSigmaNs), so
+    // planes live and die with the point cloud. Selected camera is always kept (interaction
+    // floor); timeless images always shown. Planes hard-cut at the outer edge (sigma+soft) so
+    // they persist through the frustum's soft fade. (Hovered out-of-window cameras still show
+    // their frustum outline via the lines effect; plane rebuild stays tied to selection only to
+    // avoid per-hover texture churn on large models.)
+    const planeFrustums = timeActive
+      ? frustums.filter((f) => {
+          if (f.image.imageId === selectedImageId) return true;
+          const t = f.image.t;
+          if (t === null || t === undefined) return true;
+          return Math.abs(Number(t) - currentNs) <= pointSigmaNs + camSoftNs;
+        })
+      : frustums;
+
+    const list = buildImagePlaneMeshObjects(gl, planeFrustums, textureMapRef.current, {
       cameraScale,
       selectedImageId,
       showImagePlane,
@@ -948,7 +1132,7 @@ export function ColmapVisualizer() {
       map.set(imageId, { obj, texture });
     }
     return removeAll;
-  }, [gl, frustums, cameraScale, selectedImageId, showImagePlane, textureMapVersion, imageDetailId, showMatchesInModal, matchedImageId, frustumRasterOk]);
+  }, [gl, frustums, cameraScale, selectedImageId, showImagePlane, textureMapVersion, imageDetailId, showMatchesInModal, matchedImageId, frustumRasterOk, timeActive, currentNs, pointSigmaNs, camSoftNs]);
 
   // Hex color to RGB (0-1)
   const backgroundColorRgb = useMemo(() => {
@@ -1029,10 +1213,171 @@ export function ColmapVisualizer() {
   }, [updateCameraFromInput, render]);
 
 
+  const captureView = useCallback(() => {
+    const cam = cameraRef.current;
+    if (!cam) return null;
+    const fov = cameraFov;
+
+    if (isOrbitMode && orbitTargetRef?.current) {
+      const pos = cam._position ?? cam.position;
+      const target = orbitTargetRef.current;
+      const radius = orbitDistanceRef?.current ?? null;
+      // Derive yaw/pitch from the actual pos→target direction.
+      // In orbit mode cam._yawRad is always 0 (reset by applyOrbitRotation),
+      // so using it would serialise a stale FPS residue instead of the real azimuth.
+      const dx = target[0] - pos[0];
+      const dy = target[1] - pos[1];
+      const dz = target[2] - pos[2];
+      const mag = Math.hypot(dx, dy, dz);
+      const pitch = mag > 1e-6 ? Math.asin(Math.max(-1, Math.min(1, dy / mag))) : 0;
+      // Convention: forwardHorizontalRef = [-sin(yaw), 0, -cos(yaw)]
+      // → yaw = atan2(-fwd.x, -fwd.z)
+      const yaw = mag > 1e-6 ? Math.atan2(-dx, -dz) : 0;
+      return {
+        v: 2,
+        mode: 'orbit',
+        pos: [...pos],
+        up: cam.worldUp,
+        yaw,
+        pitch,
+        fov,
+        orbitTarget: [...target],
+        orbitRadius: radius,
+      };
+    }
+
+    // FPS mode
+    const pos = cam._position ?? cam.position;
+    return {
+      v: 2,
+      mode: 'fps',
+      pos: [...pos],
+      yaw: cam._yawRad ?? cam.yawRad ?? 0,
+      pitch: cam._pitchRad ?? cam.pitchRad ?? 0,
+      fov,
+    };
+  }, [cameraFov, isOrbitMode, orbitTargetRef, orbitDistanceRef]);
+
+  const applyView = useCallback((view) => {
+    try {
+      const cam = cameraRef.current;
+      if (!cam) return;
+
+      // Determine mode: v2 explicit; v1 heuristic (orbitTarget present → orbit).
+      const mode = view.mode ?? (view.orbitTarget ? 'orbit' : 'fps');
+
+      if (mode === 'orbit' && view.orbitTarget && view.orbitRadius != null) {
+        const target = view.orbitTarget;
+        const radius = view.orbitRadius;
+
+        // Resolve yaw/pitch.
+        // v2 (mode field present): angles are already derived from pos→target geometry.
+        // v1 compat (no mode field): stored yaw may be a stale FPS residue — re-derive
+        //   from the stored pos→target vector if pos is available.
+        let yaw, pitch;
+        if (view.mode === 'orbit' && view.yaw !== undefined && view.pitch !== undefined) {
+          yaw = view.yaw;
+          pitch = view.pitch;
+        } else if (view.pos) {
+          const dx = target[0] - view.pos[0];
+          const dy = target[1] - view.pos[1];
+          const dz = target[2] - view.pos[2];
+          const mag = Math.hypot(dx, dy, dz);
+          pitch = mag > 1e-6 ? Math.asin(Math.max(-1, Math.min(1, dy / mag))) : 0;
+          yaw = mag > 1e-6 ? Math.atan2(-dx, -dz) : 0;
+        } else {
+          yaw = view.yaw ?? 0;
+          pitch = view.pitch ?? 0;
+        }
+
+        // Reconstruct camera position and orientation from orbit geometry.
+        // forwardHorizontalRef = [-sin(yaw), 0, -cos(yaw)]  (yaw=0 → looking in -Z)
+        const fwdH = [-Math.sin(yaw), 0, -Math.cos(yaw)];
+        const cosPitch = Math.cos(pitch);
+        const sinPitch = Math.sin(pitch);
+        // Full forward = fwdH pitched by pitch (worldUp contribution = sinPitch * [0,1,0])
+        const fwd = [fwdH[0] * cosPitch, sinPitch, fwdH[2] * cosPitch];
+        cam._position = [
+          target[0] - fwd[0] * radius,
+          target[1] - fwd[1] * radius,
+          target[2] - fwd[2] * radius,
+        ];
+        cam._forwardHorizontalRef = fwdH;
+        cam._yawRad = 0;
+        cam._pitchRad = pitch;
+        cam._cacheInvalid = true;
+        cam._rotationCache = null;
+        cam._viewMatrixCache = null;
+        viewMatrixRef.current = cam.viewMatrix;
+        if (view.fov !== undefined && view.fov !== cameraFov) setCameraFov(view.fov);
+        if (orbitTargetRef) orbitTargetRef.current = [...target];
+        if (orbitDistanceRef) orbitDistanceRef.current = radius;
+        orbitControls.orbitTargetDistanceRef.current = radius;
+      } else {
+        // FPS mode
+        if (view.pos) cam._position = [...view.pos];
+        if (view.yaw !== undefined) cam._yawRad = view.yaw;
+        if (view.pitch !== undefined) cam._pitchRad = view.pitch;
+        cam._cacheInvalid = true;
+        cam._rotationCache = null;
+        cam._viewMatrixCache = null;
+        viewMatrixRef.current = cam.viewMatrix;
+        if (view.fov !== undefined && view.fov !== cameraFov) setCameraFov(view.fov);
+      }
+    } catch (err) {
+      console.warn('[ColmapVisualizer] applyView failed', err);
+    }
+  }, [cameraFov, setCameraFov, orbitTargetRef, orbitDistanceRef]);
+
+  // Embedded HoloLab cards own one workflow-wide view.  A standalone
+  // ColmapUtil page never receives this message and retains its localStorage
+  // fallback below.
+  const [workflowViewManaged, setWorkflowViewManaged] = useState(false);
+  const [workflowView, setWorkflowView] = useState(null);
+  const workflowFactoryRef = useRef(null);
+  const announcedReadyRef = useRef(false);
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.origin !== window.location.origin || event.data?.type !== 'hololab-viewer-camera') return;
+      const managed = event.data.managed === true;
+      setWorkflowViewManaged(managed);
+      setWorkflowView(event.data.has_default === false ? null : event.data.view ?? null);
+      if (event.data.factory_view) workflowFactoryRef.current = event.data.factory_view;
+      // A missing/unavailable workflow service deliberately falls back to
+      // this viewer's localStorage default; do not overwrite it with null.
+      if (managed) applyView(event.data.view ?? workflowFactoryRef.current);
+    };
+    window.addEventListener('message', handler);
+    if (!announcedReadyRef.current) {
+      announcedReadyRef.current = true;
+      window.parent.postMessage({ type: 'hololab-viewer-ready', viewer_id: 'colmap' }, window.location.origin);
+    }
+    return () => window.removeEventListener('message', handler);
+  }, [applyView]);
+
+  const publishWorkflowView = useCallback((view) => {
+    if (!workflowViewManaged || window.parent === window) return;
+    window.parent.postMessage({ type: 'hololab-viewer-camera-default', view }, window.location.origin);
+  }, [workflowViewManaged]);
+
+  // Apply saved view or factory default on every mount.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('colmaputil.default_view');
+      const saved = raw ? JSON.parse(raw) : null;
+      applyView(saved?.v >= 1 ? saved : FACTORY_VIEW);
+    } catch (err) {
+      console.warn('[ColmapVisualizer] could not restore default view', err);
+      applyView(FACTORY_VIEW);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount only
+
   const handleContextMenu = useCallback((e) => {
-    // Context menu removed, no-op
     e.preventDefault();
-  }, []);
+    const view = captureView();
+    if (view) setCtxMenu({ x: e.clientX, y: e.clientY, view });
+  }, [captureView]);
 
   const handleMouseDown = useCallback((e) => {
     if (e.button === 2) {
@@ -1469,6 +1814,52 @@ export function ColmapVisualizer() {
         onDoubleClick={handleDoubleClick}
       />
       <OverlayUI />
+      {ctxMenu && (
+        <ViewContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          onCopy={() => {
+            const json = JSON.stringify(ctxMenu.view, null, 2);
+            (navigator.clipboard?.writeText(json) ?? Promise.reject())
+              .then(() => addToast({ message: '视角已复制到剪贴板', type: 'success', duration: 1500 }))
+              .catch(() => {
+                try {
+                  const ta = document.createElement('textarea');
+                  ta.value = json;
+                  document.body.appendChild(ta);
+                  ta.select();
+                  document.execCommand('copy');
+                  document.body.removeChild(ta);
+                  addToast({ message: '视角已复制到剪贴板', type: 'success', duration: 1500 });
+                } catch (_) {
+                  addToast({ message: '复制失败，请手动复制', type: 'error', duration: 2000 });
+                }
+              });
+          }}
+          onSetDefault={() => {
+            if (workflowViewManaged) {
+              setWorkflowView(ctxMenu.view);
+              publishWorkflowView(ctxMenu.view);
+            } else {
+              localStorage.setItem('colmaputil.default_view', JSON.stringify(ctxMenu.view));
+            }
+            addToast({ message: '已设为默认视角', type: 'success', duration: 1500 });
+          }}
+          onResetDefault={() => {
+            if (workflowViewManaged) {
+              setWorkflowView(null);
+              applyView(workflowFactoryRef.current);
+              publishWorkflowView(null);
+            } else {
+              localStorage.removeItem('colmaputil.default_view');
+              applyView(FACTORY_VIEW);
+            }
+            addToast({ message: '已重置默认视角', type: 'info', duration: 1500 });
+          }}
+          hasDefault={workflowViewManaged ? !!workflowView : !!localStorage.getItem('colmaputil.default_view')}
+        />
+      )}
       {/* Image plane textures driven by ImageTextureManager in useEffect */}
       {/* Hover card: camera info */}
       {hoveredImageInfo && hoveredImageCardPos && !isDraggingRef.current && (

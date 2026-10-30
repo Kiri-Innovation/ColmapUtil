@@ -8,6 +8,7 @@ import { LanguageTabSwitcher } from '../common/LanguageTabSwitcher';
 import { handleFileDrop } from './fileDropHandler.js';
 import { useIsMobile } from '../../utils/isMobile.js';
 import { isExtensionPath } from '../../utils/extensionModalUrl';
+import { isEmbedMode } from '../../utils/embedMode.js';
 import { ERROR_TOAST_DURATION_MS } from '../../config';
 import { Info, Plus, X } from 'lucide-react';
 import './InitiationPage.css';
@@ -75,27 +76,64 @@ function ExtensionReceivingOverlay() {
   );
 }
 
-// `?embed=1` 嵌入模式：父页面（如 Kiri4D admin）通过 postMessage 直接推 Blob
-function isEmbedMode() {
-  if (typeof window === 'undefined') return false;
-  const p = new URLSearchParams(window.location.search);
-  const v = p.get('embed');
-  return v === '1' || v === 'true';
-}
-
-function EmbedZipListener({ context }) {
-  const { processZipFile } = handleFileDrop(context);
+// Two messages supported in embed mode:
+//
+//   * `colmap-load-zip`   — payload: { blob: Blob, name?: string }
+//                           legacy path for Kiri4D admin; the whole
+//                           reconstruction (sparse + optional images)
+//                           arrives as a single ZIP that goes through
+//                           the same loader as a user-drop of a .zip.
+//   * `colmap-load-files` — payload: { files: [{name: string, blob: Blob}], name?: string }
+//                           direct-file path for parents that already
+//                           have the sparse files on hand (e.g. a
+//                           gateway proxy exposing individual .txt/.bin
+//                           artifacts). The parent constructs the
+//                           sparse fileset itself — including a
+//                           synthetic empty points3D.txt if the
+//                           reconstruction is poses-only — and we hand
+//                           the fileMap straight to the normal
+//                           processFiles pipeline. Skips zip decoding
+//                           entirely.
+//
+// On mount we post `{type: 'colmap-ready'}` back to the parent so the
+// parent knows it can start sending.
+function EmbedDataListener({ context }) {
+  const { processZipFile, processFiles } = handleFileDrop(context);
   useEffect(() => {
     if (!isEmbedMode()) return;
     const handler = (event) => {
       const d = event?.data;
       if (!d || typeof d !== 'object') return;
-      if (d.type !== 'colmap-load-zip') return;
-      const blob = d.blob;
-      if (!(blob instanceof Blob)) return;
-      const name = typeof d.name === 'string' && d.name ? d.name : 'colmap.zip';
-      const file = blob instanceof File ? blob : new File([blob], name, { type: 'application/zip' });
-      processZipFile(file);
+
+      if (d.type === 'colmap-load-zip') {
+        const blob = d.blob;
+        if (!(blob instanceof Blob)) return;
+        const name = typeof d.name === 'string' && d.name ? d.name : 'colmap.zip';
+        const file = blob instanceof File ? blob : new File([blob], name, { type: 'application/zip' });
+        processZipFile(file);
+        return;
+      }
+
+      if (d.type === 'colmap-load-files') {
+        const list = Array.isArray(d.files) ? d.files : null;
+        if (!list || list.length === 0) return;
+        const fileMap = new Map();
+        for (const entry of list) {
+          if (!entry || typeof entry.name !== 'string') continue;
+          const blob = entry.blob;
+          if (!(blob instanceof Blob)) continue;
+          const file = blob instanceof File
+            ? blob
+            : new File([blob], entry.name, { type: blob.type || 'application/octet-stream' });
+          // The pickColmapDirectory helper keys off the leaf filename;
+          // any path prefix works as long as siblings share it. Use
+          // the plain filename so all files land in one directory bag.
+          fileMap.set(entry.name, file);
+        }
+        if (fileMap.size === 0) return;
+        processFiles(fileMap);
+        return;
+      }
     };
     window.addEventListener('message', handler);
     try {
@@ -104,7 +142,7 @@ function EmbedZipListener({ context }) {
       }
     } catch { /* parent gone */ }
     return () => window.removeEventListener('message', handler);
-  }, [processZipFile]);
+  }, [processZipFile, processFiles]);
   return null;
 }
 
@@ -413,7 +451,7 @@ export function InitiationPage({ children }) {
       onDrop={handleFileDropAsync}
     >
       <ExtensionZipListener context={context} />
-      <EmbedZipListener context={context} />
+      <EmbedDataListener context={context} />
       {children}
 
       {isDragging && <DragOverlay />}
@@ -426,7 +464,12 @@ export function InitiationPage({ children }) {
         />
       )}
 
-      {loading && !extensionReceiving && <LoadingOverlay />}
+      {/* In embed mode the parent renders its own loading affordance
+          (a subtle corner chip only shown for genuine cache misses), and
+          the parent hot-swaps data via postMessage — a full-page overlay
+          on every swap would flash the previous frame off-screen and
+          look worse than doing nothing. Standalone paths still show it. */}
+      {loading && !extensionReceiving && !isEmbedMode() && <LoadingOverlay />}
 
       {extensionReceiving && <ExtensionReceivingOverlay />}
 

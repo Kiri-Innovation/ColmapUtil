@@ -312,6 +312,31 @@
 .cu-gallery-overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: 0.375rem 0.5rem; }
 .cu-gallery-overlay-text { color: #fff; font-size: var(--font-size-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ========== View Context Menu ========== */
+.cu-ctx-menu {
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-1) 0;
+  box-shadow: var(--shadow-lg);
+  min-width: 160px;
+  font-size: var(--font-size-sm);
+}
+.cu-ctx-menu-item {
+  display: block;
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.cu-ctx-menu-item:hover { background-color: var(--bg-hover); }
+.cu-ctx-menu-item--disabled { color: var(--text-muted); cursor: default; }
+.cu-ctx-menu-item--disabled:hover { background: none; }
+
 /* ========== Hover Card ========== */
 .cu-hover-card {
   background-color: var(--bg-tertiary);

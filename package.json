@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:embed": "vite build --base=/colmaputil/",
     "buildext": "node -e \"require('fs').mkdirSync('public',{recursive:true})\" && cd extension && yarn install --ignore-scripts && npx --yes @vscode/vsce package --allow-missing-repository -o ../public/colmaputil-send.vsix",
     "buildext:cursor": "cd extension && yarn install-local",
     "release-ext": "cd extension && yarn release",

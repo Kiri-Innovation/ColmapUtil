@@ -10,6 +10,7 @@ export const STORAGE_KEYS = {
   ui: 'colmap-util-ui',
   export: 'colmap-util-export',
   rig: 'colmap-util-rig',
+  time: 'colmap-util-time',
 };
 
 const DEFAULTS = {
@@ -21,6 +22,10 @@ const DEFAULTS = {
     errorGamma: 1.0,
     trackLengthGamma: 1.0,
     showPointCloud: true,
+    // colmap4d point-cloud time filtering path: 'cpu' (rebuild buffers per scrub) or
+    // 'gpu' (upload per-point time once, shader discards out-of-window). Default 'cpu'
+    // so behavior is unchanged unless explicitly opted in.
+    renderMode: 'cpu',
   },
   camera: {
     cameraDisplayMode: 'on',
@@ -81,6 +86,16 @@ const DEFAULTS = {
     rigDisplayMode: 'lines',
     rigLineColor: '#00ffff',
     rigLineOpacity: 0.7,
+  },
+  // colmap4d time axis (fractions of the model's [minT, maxT] range, so defaults are
+  // dataset-independent). posFrac = scrubber position; sigma/epsilon = half-window widths.
+  time: {
+    posFrac: 0,
+    // Single shared window half-width (fraction of range) for BOTH points and cameras, so the
+    // whole camera representation lives and dies with the point cloud. (Replaces the former
+    // separate camera `epsilonFrac`, removed; any stale stored value is ignored by getAll.)
+    sigmaFrac: 0.1,
+    softFrac: 0, // soft-ramp band width (fraction of range); 0 = hard window
   },
 };
 
@@ -199,6 +214,7 @@ export const settings = {
   ui: createSettingsSection('ui', DEFAULTS.ui),
   export: createSettingsSection('export', DEFAULTS.export),
   rig: createSettingsSection('rig', DEFAULTS.rig),
+  time: createSettingsSection('time', DEFAULTS.time),
 };
 
 export { DEFAULTS };

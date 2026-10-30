@@ -51,8 +51,37 @@ npm run dev
 ## 构建
 
 ```bash
-npm run build
+npm run build            # 站点部署（默认 base=/）
+npm run build:embed      # 嵌入部署（base=/colmaputil/，供父应用把 dist 拷进 /colmaputil/ 静态目录）
 ```
+
+## 嵌入模式（iframe 集成）
+
+带 `?embed=1` 打开时，页面隐藏 InitiationPage/侧栏/底栏，等父页面通过 `postMessage` 推数据。挂载后主动向 `window.parent` 广播一次 `{type: 'colmap-ready'}`，父页面收到后即可开始发送。
+
+支持两种消息：
+
+```js
+// 1) ZIP 一次性投递（历史通道，Kiri4D admin 走这条）
+parent.postMessage({
+  type: 'colmap-load-zip',
+  blob,               // Blob | File — 一个 COLMAP zip（含 cameras/images/points3D）
+  name: 'sfm.zip',    // 可选，仅用于文件名回显
+}, '*');
+
+// 2) 直接投递散装文件（无需 zip；HoloLab 预览抽屉走这条）
+parent.postMessage({
+  type: 'colmap-load-files',
+  files: [
+    { name: 'cameras.txt',  blob: cameraBlob },
+    { name: 'images.txt',   blob: imagesBlob },
+    { name: 'points3D.txt', blob: pointsBlob },  // 仅位姿场景可以是空 header
+  ],
+  name: 'sfm',        // 可选
+}, '*');
+```
+
+父页面负责：拼装 sparse 文件集（若上游只出位姿，请自行注入空的 `points3D.txt` 头以满足解析器）、把 iframe 放进自己的抽屉/浮窗，`sandbox="allow-scripts allow-same-origin"` 即可。
 
 ## 使用方法
 

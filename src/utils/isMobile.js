@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BREAKPOINT_MOBILE } from '../config.js';
+import { isEmbedMode } from './embedMode.js';
 
 /**
  * 检测是否为移动设备。
@@ -8,6 +9,11 @@ import { BREAKPOINT_MOBILE } from '../config.js';
  */
 export function isMobile() {
   if (typeof window === 'undefined') return false;
+
+  // ``innerWidth`` is the iframe's container width, not the device width.
+  // Embedded viewers are laid out by their host, so never let a narrow card
+  // turn the standalone mobile gate on (even on touch-capable desktops).
+  if (isEmbedMode()) return false;
   
   // 检测 User Agent 中的移动设备标识
   const userAgent = navigator.userAgent.toLowerCase();

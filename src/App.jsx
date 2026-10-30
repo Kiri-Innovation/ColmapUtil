@@ -11,6 +11,7 @@ import { AppProvider, useAppContext, useUI, useSelection, useT } from './AppCont
 import { LanguageSwitcher } from './components/common/LanguageSwitcher';
 import { useIsMobile } from './utils/isMobile.js';
 import { useExtensionModalUrl, navigateAwayFromExtension } from './utils/extensionModalUrl';
+import { isEmbedMode } from './utils/embedMode.js';
 import { handleFileDrop } from './components/initiation-page/fileDropHandler.js';
 import './App.css';
 import './styles/design-system.css';
@@ -84,7 +85,9 @@ function Header() {
         )}
       </div>
       <div className="app-toolbar-right">
-        {loading && (
+        {/* Embed mode: parent owns loading UX. See ``utils/embedMode.js``
+            and the ``LoadingOverlay`` gate in InitiationPage. */}
+        {loading && !isEmbedMode() && (
           <div className="cu-toolbar-loading">{t('loading')}</div>
         )}
       </div>
@@ -335,7 +338,9 @@ function MainLayout() {
 
   return (
     <>
-      {mobile ? <MobileMessage /> : (
+      {/* The standalone-only drag-and-drop guidance must never replace an
+          embedded visualizer; its host supplies data and owns the layout. */}
+      {!embedMode && mobile ? <MobileMessage /> : (
     <div style={{
       width: '100%',
       height: '100vh',

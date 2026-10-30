@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
 /** Two mutually exclusive input domains. Only this viewer installs the gate. */
-export function useSplatvFocus(canvasRef, timelineRef, playback) {
+export function useSplatvFocus(canvasRef, timelineRef, playback, viewerId = 'splatv_scene') {
   const [activeFocus, setActiveFocus] = useState(null);
   const activeRef = useRef(null);
   const playbackRef = useRef(playback);
   playbackRef.current = playback;
   useEffect(() => {
-    const send = focus => parent.postMessage({ type: 'hololab-viewer-focus', viewer_id: 'splatv_scene', focus }, location.origin);
+    const send = focus => parent.postMessage({ type: 'hololab-viewer-focus', viewer_id: viewerId, focus }, location.origin);
     const activate = focus => {
       if (activeRef.current === focus) return;
       // Release held camera movement keys while the canvas still owns focus.
@@ -64,7 +64,7 @@ export function useSplatvFocus(canvasRef, timelineRef, playback) {
     window.addEventListener('keydown', key, true);
     window.addEventListener('blur', blur);
     window.addEventListener('message', message);
-    parent.postMessage({ type: 'hololab-viewer-focus-ready', viewer_id: 'splatv_scene' }, location.origin);
+    parent.postMessage({ type: 'hololab-viewer-focus-ready', viewer_id: viewerId }, location.origin);
     return () => {
       window.removeEventListener('pointerdown', down, true);
       window.removeEventListener('focusin', focus);
@@ -73,6 +73,6 @@ export function useSplatvFocus(canvasRef, timelineRef, playback) {
       window.removeEventListener('blur', blur);
       window.removeEventListener('message', message);
     };
-  }, [canvasRef, timelineRef]);
+  }, [canvasRef, timelineRef, viewerId]);
   return activeFocus;
 }

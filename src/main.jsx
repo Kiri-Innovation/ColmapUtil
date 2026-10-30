@@ -4,7 +4,7 @@ import './index.css'
 import App from './App.jsx'
 import SplatvBenchmark from './SplatvBenchmark.jsx'
 
-const isSplatvBenchmark = new URLSearchParams(window.location.search).get('embed') === 'splatv';
+const isSplatvBenchmark = ['splatv', 'ftgsply'].includes(new URLSearchParams(window.location.search).get('embed'));
 
 createRoot(document.getElementById('root')).render(
   isSplatvBenchmark

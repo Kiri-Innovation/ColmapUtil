@@ -22,12 +22,12 @@ export function advancePlayback(value, direction, seconds, period) {
 }
 
 /** Viewer-owned animation; no React state updates in the frame loop. */
-export function useSplatvPlayback(period, enabled = true, initiallySuspended = false) {
+export function useSplatvPlayback(period, enabled = true, initiallySuspended = false, storageKey = PLAYBACK_STORAGE_KEY) {
   const [suspended, setSuspended] = useState(initiallySuspended);
   const wasRunning = useRef(false);
   const [initial] = useState(() => {
     if (!enabled) return { mode: 'manual', time: 0.5, direction: 1, raw: null };
-    try { const raw = localStorage.getItem(PLAYBACK_STORAGE_KEY); return { ...restorePlayback(raw), raw }; }
+    try { const raw = localStorage.getItem(storageKey); return { ...restorePlayback(raw), raw }; }
     catch { return { ...restorePlayback(null), raw: null }; }
   });
   const timeRef = useRef(initial.time);
@@ -47,7 +47,7 @@ export function useSplatvPlayback(period, enabled = true, initiallySuspended = f
     saveTimer.current = null;
     const serialized = JSON.stringify({ mode: mode.current, time: timeRef.current, direction: direction.current });
     if (serialized === lastSaved.current) return;
-    try { localStorage.setItem(PLAYBACK_STORAGE_KEY, serialized); lastSaved.current = serialized; }
+    try { localStorage.setItem(storageKey, serialized); lastSaved.current = serialized; }
     catch { /* Storage unavailable: playback still works for this session. */ }
   }
 
@@ -108,7 +108,7 @@ export function useSplatvPlayback(period, enabled = true, initiallySuspended = f
     // a newer interaction when all iframes unload together.
     const flush = () => {
       clearTimeout(saveTimer.current);
-      try { if (localStorage.getItem(PLAYBACK_STORAGE_KEY) !== lastSaved.current) return; } catch { return; }
+      try { if (localStorage.getItem(storageKey) !== lastSaved.current) return; } catch { return; }
       save();
     };
     const onHidden = () => { if (document.visibilityState === 'hidden') flush(); };

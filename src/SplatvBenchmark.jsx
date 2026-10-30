@@ -31,7 +31,9 @@ function formatBytes(bytes) {
  */
 export default function SplatvBenchmark() {
   const src = new URLSearchParams(window.location.search).get('src');
-  const staticPly = new URLSearchParams(window.location.search).get('format') === 'ply-3dgs';
+  const ftgsPly = new URLSearchParams(window.location.search).get('embed') === 'ftgsply';
+  const viewerId = ftgsPly ? 'ftgsply_scene' : 'splatv_scene';
+  const staticPly = !ftgsPly && new URLSearchParams(window.location.search).get('format') === 'ply-3dgs';
   const showHud = ['hud', 'debug'].some(key => new URLSearchParams(window.location.search).get(key) === '1');
   const debug = new URLSearchParams(window.location.search).get('debug') === '1';
   const canvasRef = useRef(null);
@@ -51,9 +53,9 @@ export default function SplatvBenchmark() {
   const [status, setStatus] = useState(src ? '加载、解析与首次深度排序中' : '缺少 src 参数');
   const [elapsed, setElapsed] = useState(0);
   const [firstFrameMs, setFirstFrameMs] = useState(null);
-  const playback = useSplatvPlayback(playbackPeriod(new URLSearchParams(window.location.search).get('playback_period')), !staticPly, true);
+  const playback = useSplatvPlayback(playbackPeriod(new URLSearchParams(window.location.search).get('playback_period')), !staticPly, true, ftgsPly ? 'colmaputil.ftgsply.playback' : undefined);
   const timelineRef = useRef(null);
-  const activeFocus = useSplatvFocus(canvasRef, timelineRef, playback);
+  const activeFocus = useSplatvFocus(canvasRef, timelineRef, playback, viewerId);
   useEffect(() => { playback.setSuspended(activeFocus === null); }, [activeFocus, playback.setSuspended]);
   const [redrawVersion, setRedrawVersion] = useState(0);
   const [cameraState, setCameraState] = useState(null);
@@ -126,10 +128,10 @@ export default function SplatvBenchmark() {
     window.addEventListener('message', onMessage);
     if (cameraState && !announcedReadyRef.current) {
       announcedReadyRef.current = true;
-      window.parent.postMessage({ type: 'hololab-viewer-ready', viewer_id: 'splatv_scene' }, window.location.origin);
+      window.parent.postMessage({ type: 'hololab-viewer-ready', viewer_id: viewerId }, window.location.origin);
     }
     return () => window.removeEventListener('message', onMessage);
-  }, [applyView, cameraState]);
+  }, [applyView, cameraState, viewerId]);
 
   useEffect(() => {
     if (cameraState && !factoryViewRef.current) factoryViewRef.current = captureView();
@@ -172,9 +174,9 @@ export default function SplatvBenchmark() {
     if (!src) return null;
     const scene = new SceneManager();
     // Explicit type: proxy URLs need not end in .ply or .splatv.
-    scene.addObject('benchmark-splatv', src, [0, 0, 0], [0, 0, 0], [1, 1, 1], null, staticPly ? 'ply' : 'splatv', staticPly ? '3dgs' : '4dgs');
+    scene.addObject('benchmark-splatv', src, [0, 0, 0], [0, 0, 0], [1, 1, 1], null, staticPly || ftgsPly ? 'ply' : 'splatv', staticPly ? '3dgs' : '4dgs');
     return scene;
-  }, [src, staticPly]);
+  }, [src, staticPly, ftgsPly]);
 
   useEffect(() => {
     if (!src || firstFrameMs !== null) return undefined;
@@ -216,7 +218,7 @@ export default function SplatvBenchmark() {
   }
 
   return (
-    <main className="splatv-benchmark" data-active-focus={activeFocus ?? 'none'}>
+    <main className="splatv-benchmark" data-viewer={ftgsPly ? 'ftgsply' : staticPly ? 'ply-3dgs' : 'splatv'} data-active-focus={activeFocus ?? 'none'}>
       <button type="button" className="splatv-helpers nodrag nowheel" data-helper-mode={helpers}
         aria-label={`辅助显示：${HELPER_LABELS[helpers]}；点击切换`}
         title={`当前：${HELPER_LABELS[helpers]}；点击切换`} onClick={cycleHelpers}>
@@ -235,7 +237,7 @@ export default function SplatvBenchmark() {
         title={`实际加载的 SplaTV 构建版本：${__VIEWER_BUILD_ID__}`}>
         {__VIEWER_BUILD_ID__}
       </span>
-      <canvas ref={canvasRef} className="splatv-canvas" tabIndex={0} aria-label="SplaTV 3D view" onContextMenu={(event) => {
+      <canvas ref={canvasRef} className="splatv-canvas" tabIndex={0} aria-label={ftgsPly ? 'FreeTimeGS PLY 4D view' : 'SplaTV 3D view'} onContextMenu={(event) => {
         event.preventDefault(); const view = captureView(); if (view) setCtxMenu({ x: event.clientX, y: event.clientY, view });
       }} />
       {showHud && <aside className="splatv-hud" aria-live="polite">
@@ -248,8 +250,8 @@ export default function SplatvBenchmark() {
         <div>{firstFrameMs === null ? `耗时 ${(elapsed / 1000).toFixed(1)} s` : `首帧 ${(firstFrameMs / 1000).toFixed(2)} s`}</div>
         <div className="splatv-help">拖拽旋转 · 滚轮缩放</div>
       </aside>}
-      {staticPly && status.startsWith('加载失败') && <div className="splatv-hud" role="alert">{status}</div>}
-      {!staticPly && <div className="splatv-time-control nodrag nowheel" ref={timelineRef} tabIndex={0} aria-label="时间轴交互区域">
+      {(staticPly || ftgsPly) && status.startsWith('加载失败') && <div className="splatv-hud" role="alert">{status}</div>}
+      {!staticPly && <div className="splatv-time-control nodrag nowheel" ref={timelineRef} tabIndex={0} aria-label={ftgsPly ? 'FTGS 归一化时间轴 0–1' : '时间轴交互区域'}>
         <span ref={playback.labelRef}>{playback.initial.mode === 'auto' ? '自动' : '手动'} {playback.initial.time.toFixed(2)}</span>
         <div className="splatv-time-track" ref={playback.trackRef}
           onPointerDown={playback.pointerDown} onPointerMove={playback.pointerMove}

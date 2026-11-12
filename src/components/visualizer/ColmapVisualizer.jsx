@@ -515,12 +515,21 @@ export function ColmapVisualizer() {
           w: quaternionObj.w,
         },
         cameraIndex: cameraIdToIndex.get(image.cameraId) ?? 0,
+        datasetIndex: image.datasetIndex ?? 0,
         imageFile,
       });
     }
 
     return result;
   }, [colmapData, loadedFiles]);
+
+  // Multiple visible datasets: one palette color per dataset, so a comparison of two
+  // single-camera reconstructions is not a single red.
+  const colorByDataset = useMemo(() => {
+    const ids = new Set();
+    for (const frustum of frustums) ids.add(frustum.datasetIndex ?? 0);
+    return ids.size > 1;
+  }, [frustums]);
 
   // Point IDs observed by selected camera
   const selectedImagePointIds = useMemo(() => {
@@ -919,12 +928,13 @@ export function ColmapVisualizer() {
       matchedImageIds: new Set(),
       frustumColorMode,
       imageFrameIndexMap,
+      colorByDataset,
       currentTimeNs: timeActive ? currentNs : null,
       sigmaNs: timeActive ? pointSigmaNs : Infinity,
       softNs: timeActive ? camSoftNs : 0,
     });
     updateLinesObject(gl, linesObj, positions, colors);
-  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, hoveredImageId, matchedCameraIds, frustumColorMode, imageFrameIndexMap, timeActive, currentNs, pointSigmaNs, camSoftNs]);
+  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, hoveredImageId, matchedCameraIds, frustumColorMode, imageFrameIndexMap, colorByDataset, timeActive, currentNs, pointSigmaNs, camSoftNs]);
 
   // Update matched camera frustums (white, alpha 0.5)
   useEffect(() => {
@@ -956,9 +966,10 @@ export function ColmapVisualizer() {
       matchedImageIds: matchedCameraIds,
       frustumColorMode,
       imageFrameIndexMap,
+      colorByDataset,
     });
     updateLinesObject(gl, matchedFrustumLinesObj, positions, colors);
-  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, imageDetailId, showMatchesInModal, matchedCameraIds, frustumColorMode, imageFrameIndexMap]);
+  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, imageDetailId, showMatchesInModal, matchedCameraIds, frustumColorMode, imageFrameIndexMap, colorByDataset]);
 
   // Update match connection lines (when camera selected, detail open, show matches on)
   useEffect(() => {

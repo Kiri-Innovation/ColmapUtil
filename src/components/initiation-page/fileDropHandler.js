@@ -308,7 +308,7 @@ export function handleFileDrop(context) {
     setActiveDatasetEntryId(keepActiveId);
   }
 
-  function cloneImagesWithPointRemap(images, cameraIdMap, pointIdMap, imageIdMap, datasetPrefix) {
+  function cloneImagesWithPointRemap(images, cameraIdMap, pointIdMap, imageIdMap, datasetPrefix, datasetIndex) {
     const out = new Map();
     for (const image of images.values()) {
       const newImageId = imageIdMap.get(image.imageId);
@@ -331,6 +331,7 @@ export function handleFileDrop(context) {
         imageId: newImageId,
         cameraId: newCameraId,
         name: `${datasetPrefix}/${image.name}`,
+        datasetIndex,
         points2D,
       });
     }
@@ -470,7 +471,8 @@ export function handleFileDrop(context) {
     let nextImageId = 1;
     let nextPointId = BigInt(1);
 
-    for (const entry of visible) {
+    for (let datasetIndex = 0; datasetIndex < visible.length; datasetIndex++) {
+      const entry = visible[datasetIndex];
       const data = entry.parsedBundle.colmapData;
       const cameraIdMap = new Map();
       const imageIdMap = new Map();
@@ -499,7 +501,8 @@ export function handleFileDrop(context) {
         cameraIdMap,
         pointIdMap,
         imageIdMap,
-        entry.id
+        entry.id,
+        datasetIndex
       );
       const remappedPoints = clonePointCloudWithRemap(pointCloud, pointIdMap, imageIdMap);
 

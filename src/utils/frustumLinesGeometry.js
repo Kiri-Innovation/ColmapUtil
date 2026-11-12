@@ -22,9 +22,10 @@ function hexToRgb(hex) {
 }
 
 /** options: cameraScale, selectedImageId, hoveredImageId, matchedImageIds, frustumColorMode,
- *  imageFrameIndexMap, currentTimeNs, sigmaNs, softNs (colmap4d time gating — cameras share the
- *  point cloud's window: sigmaNs = point sigma, softNs = soft-ramp band; selected/hovered/matched
- *  cameras are never gated). */
+ *  imageFrameIndexMap, colorByDataset, currentTimeNs, sigmaNs, softNs (colmap4d time gating —
+ *  cameras share the point cloud's window: sigmaNs = point sigma, softNs = soft-ramp band;
+ *  selected/hovered/matched cameras are never gated). colorByDataset paints each merged dataset
+ *  with one palette entry so two single-camera reconstructions stay distinguishable. */
 export function buildFrustumLinesGeometry(frustumsData, options = {}) {
   const {
     cameraScale = 1.0,
@@ -33,6 +34,7 @@ export function buildFrustumLinesGeometry(frustumsData, options = {}) {
     matchedImageIds = new Set(),
     frustumColorMode = 'single',
     imageFrameIndexMap = new Map(),
+    colorByDataset = false,
     currentTimeNs = null,
     sigmaNs = Infinity,
     softNs = 0,
@@ -53,7 +55,9 @@ export function buildFrustumLinesGeometry(frustumsData, options = {}) {
     const quaternion = f.quaternion;
 
     let baseColorHex;
-    if (frustumColorMode === 'byCamera') {
+    if (colorByDataset) {
+      baseColorHex = getCameraColor(f.datasetIndex ?? 0);
+    } else if (frustumColorMode === 'byCamera') {
       baseColorHex = getCameraColor(f.cameraIndex);
     } else if (frustumColorMode === 'byRigFrame') {
       const frameIndex = imageFrameIndexMap.get(image.imageId);

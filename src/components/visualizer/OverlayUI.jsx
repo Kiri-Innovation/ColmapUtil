@@ -134,6 +134,7 @@ function LayersPanel() {
   const [showFrustumWireframes, setShowFrustumWireframes] = useSetting('camera', 'showFrustumWireframes');
   const [showImagePlane, setShowImagePlane] = useSetting('camera', 'showImagePlane');
   const [backgroundColor, setBackgroundColor] = useSetting('ui', 'backgroundColor');
+  const [coneColorDividedByDataset, setConeColorDividedByDataset] = useSetting('camera', 'coneColorDividedByDataset');
   const { colmapData } = useAppContext();
 
   const hasPointCloudData = !!colmapData;
@@ -359,6 +360,40 @@ function LayersPanel() {
                 )}
               </div>
               <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{t('axis')}</span>
+            </div>
+
+            {/* Cone color: same intrinsics share a color; checked splits that by dataset */}
+            <div
+              onClick={() => setConeColorDividedByDataset(!coneColorDividedByDataset)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 8px',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                transition: 'background-color 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--bg-hover)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <div style={{
+                width: '16px',
+                height: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                {coneColorDividedByDataset && (
+                  <Check className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
+                )}
+              </div>
+              <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>{t('coneColorDividedByDataset')}</span>
             </div>
 
             {/* Cameras */}

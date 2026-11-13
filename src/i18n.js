@@ -132,6 +132,10 @@ export const T = {
   // OverlayUI / Layers
   worldGrid: { en: 'World Grid', zh: 'World Grid' },
   axis: { en: 'Axis', zh: 'Axis' },
+  coneColorDividedByDataset: {
+    en: 'Cone Color divided by Dataset',
+    zh: 'Cone Color divided by Dataset',
+  },
   background: { en: 'Background', zh: 'Background' },
   pointCloud: { en: 'Point Cloud', zh: 'Point Cloud' },
   pointSize: { en: 'Point size', zh: '点大小' },

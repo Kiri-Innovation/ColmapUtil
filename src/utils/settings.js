@@ -33,6 +33,9 @@ const DEFAULTS = {
     showImagePlane: true,
     cameraScale: 0.1,
     frustumColorMode: 'byCamera',
+    // When on, identical intrinsics in different datasets get different cone colors.
+    // Camera ID is never part of the color key.
+    coneColorDividedByDataset: true,
     unselectedCameraOpacity: 0.5,
     cameraMode: 'orbit',
     cameraProjection: 'perspective',

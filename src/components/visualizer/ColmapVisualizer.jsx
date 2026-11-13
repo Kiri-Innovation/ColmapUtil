@@ -40,6 +40,8 @@ import { sRGBToLinear, interpolateColor } from '../../utils/colorUtils';
 const FOV_MIN = 10;
 const FOV_MAX = 120;
 const FOV_STEP = 2;
+// Bump when the cone color rule changes so an open viewer rebuilds its line buffer.
+const FRUSTUM_COLOR_REV = 2;
 
 const UNSELECTED_POINT_ALPHA = 0.1;
 const UNSELECTED_POINT_COLOR_MULTIPLIER = 0.5;
@@ -149,6 +151,7 @@ export function ColmapVisualizer() {
   const [showImagePlane] = useSetting('camera', 'showImagePlane');
   const [cameraScale] = useSetting('camera', 'cameraScale');
   const [frustumColorMode] = useSetting('camera', 'frustumColorMode');
+  const [coneColorDividedByDataset] = useSetting('camera', 'coneColorDividedByDataset');
   const [unselectedCameraOpacity] = useSetting('camera', 'unselectedCameraOpacity');
   const [cameraProjection] = useSetting('camera', 'cameraProjection');
   const [cameraFov, setCameraFov] = useSetting('camera', 'cameraFov');
@@ -470,13 +473,6 @@ export function ColmapVisualizer() {
     if (!colmapData) return [];
 
     const result = [];
-    const cameraIdToIndex = new Map();
-    let cameraIndex = 0;
-
-    // Camera ID -> index map
-    for (const cameraId of colmapData.cameras.keys()) {
-      cameraIdToIndex.set(cameraId, cameraIndex++);
-    }
 
     // Image frame index map (for rig-frame color mode)
     const imageFrameIndexMap = new Map();
@@ -514,7 +510,6 @@ export function ColmapVisualizer() {
           z: quaternionObj.z,
           w: quaternionObj.w,
         },
-        cameraIndex: cameraIdToIndex.get(image.cameraId) ?? 0,
         datasetIndex: image.datasetIndex ?? 0,
         imageFile,
       });
@@ -522,14 +517,6 @@ export function ColmapVisualizer() {
 
     return result;
   }, [colmapData, loadedFiles]);
-
-  // Multiple visible datasets: one palette color per dataset, so a comparison of two
-  // single-camera reconstructions is not a single red.
-  const colorByDataset = useMemo(() => {
-    const ids = new Set();
-    for (const frustum of frustums) ids.add(frustum.datasetIndex ?? 0);
-    return ids.size > 1;
-  }, [frustums]);
 
   // Point IDs observed by selected camera
   const selectedImagePointIds = useMemo(() => {
@@ -928,13 +915,13 @@ export function ColmapVisualizer() {
       matchedImageIds: new Set(),
       frustumColorMode,
       imageFrameIndexMap,
-      colorByDataset,
+      divideByDataset: coneColorDividedByDataset,
       currentTimeNs: timeActive ? currentNs : null,
       sigmaNs: timeActive ? pointSigmaNs : Infinity,
       softNs: timeActive ? camSoftNs : 0,
     });
     updateLinesObject(gl, linesObj, positions, colors);
-  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, hoveredImageId, matchedCameraIds, frustumColorMode, imageFrameIndexMap, colorByDataset, timeActive, currentNs, pointSigmaNs, camSoftNs]);
+  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, hoveredImageId, matchedCameraIds, frustumColorMode, imageFrameIndexMap, coneColorDividedByDataset, timeActive, currentNs, pointSigmaNs, camSoftNs, FRUSTUM_COLOR_REV]);
 
   // Update matched camera frustums (white, alpha 0.5)
   useEffect(() => {
@@ -966,10 +953,10 @@ export function ColmapVisualizer() {
       matchedImageIds: matchedCameraIds,
       frustumColorMode,
       imageFrameIndexMap,
-      colorByDataset,
+      divideByDataset: coneColorDividedByDataset,
     });
     updateLinesObject(gl, matchedFrustumLinesObj, positions, colors);
-  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, imageDetailId, showMatchesInModal, matchedCameraIds, frustumColorMode, imageFrameIndexMap, colorByDataset]);
+  }, [gl, frustums, showFrustumWireframes, cameraScale, selectedImageId, imageDetailId, showMatchesInModal, matchedCameraIds, frustumColorMode, imageFrameIndexMap, coneColorDividedByDataset, FRUSTUM_COLOR_REV]);
 
   // Update match connection lines (when camera selected, detail open, show matches on)
   useEffect(() => {

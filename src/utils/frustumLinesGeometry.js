@@ -21,11 +21,63 @@ function hexToRgb(hex) {
     : null;
 }
 
+/** Numeric identity of a camera, ignoring CAMERA_ID. Model, size, and params must all match. */
+export function cameraIntrinsicsKey(camera) {
+  if (!camera) return 'missing';
+  const params = Array.isArray(camera.params) ? camera.params : [];
+  const paramKey = params.map((p) => (typeof p === 'number' && Number.isFinite(p) ? String(p) : 'nan')).join(',');
+  return `${camera.modelId ?? ''}|${camera.width ?? ''}|${camera.height ?? ''}|${paramKey}`;
+}
+
+/**
+ * Stable dataset identity written by the multi-dataset merge.
+ *
+ * `datasetIndex` is authoritative: image names are user data and may not contain the
+ * synthetic `entryId/` prefix (or may later be normalized by another loading path).
+ * Keep the name prefix only as a compatibility fallback for older frustum objects.
+ */
+export function frustumDatasetKey(frustum) {
+  const datasetIndex = frustum?.datasetIndex;
+  if (datasetIndex !== null && datasetIndex !== undefined) {
+    return String(datasetIndex);
+  }
+
+  const name = String(frustum?.image?.name ?? '');
+  const slash = name.indexOf('/');
+  if (slash > 0) return name.slice(0, slash);
+  return '0';
+}
+
+/**
+ * Palette index for each frustum. Same key shares a color.
+ * divideByDataset appends the dataset key, so identical intrinsics in two datasets differ.
+ * First-seen key gets index 0.
+ */
+export function assignIntrinsicsColorIndices(frustumsData, divideByDataset) {
+  const keyToIndex = new Map();
+  let next = 0;
+  const indices = new Array(frustumsData?.length ?? 0);
+  for (let i = 0; i < indices.length; i++) {
+    const frustum = frustumsData[i];
+    const intrinsics = cameraIntrinsicsKey(frustum?.camera);
+    const key = divideByDataset
+      ? `${frustumDatasetKey(frustum)}|${intrinsics}`
+      : intrinsics;
+    let index = keyToIndex.get(key);
+    if (index === undefined) {
+      index = next++;
+      keyToIndex.set(key, index);
+    }
+    indices[i] = index;
+  }
+  return indices;
+}
+
 /** options: cameraScale, selectedImageId, hoveredImageId, matchedImageIds, frustumColorMode,
- *  imageFrameIndexMap, colorByDataset, currentTimeNs, sigmaNs, softNs (colmap4d time gating —
+ *  imageFrameIndexMap, divideByDataset, currentTimeNs, sigmaNs, softNs (colmap4d time gating —
  *  cameras share the point cloud's window: sigmaNs = point sigma, softNs = soft-ramp band;
- *  selected/hovered/matched cameras are never gated). colorByDataset paints each merged dataset
- *  with one palette entry so two single-camera reconstructions stay distinguishable. */
+ *  selected/hovered/matched cameras are never gated). By-camera colors use intrinsics, not CAMERA_ID.
+ *  divideByDataset gives each dataset its own copy of those intrinsics colors. */
 export function buildFrustumLinesGeometry(frustumsData, options = {}) {
   const {
     cameraScale = 1.0,
@@ -34,7 +86,7 @@ export function buildFrustumLinesGeometry(frustumsData, options = {}) {
     matchedImageIds = new Set(),
     frustumColorMode = 'single',
     imageFrameIndexMap = new Map(),
-    colorByDataset = false,
+    divideByDataset = true,
     currentTimeNs = null,
     sigmaNs = Infinity,
     softNs = 0,
@@ -48,17 +100,23 @@ export function buildFrustumLinesGeometry(frustumsData, options = {}) {
     return { positions: new Float32Array(0), colors: new Float32Array(0) };
   }
 
-  for (const f of frustumsData) {
+  // The dataset checkbox is independent of the Cameras color-mode menu.
+  // Single mode used to ignore it and paint every cone #ff0000.
+  const useIntrinsicsPalette = divideByDataset || frustumColorMode === 'byCamera';
+  const intrinsicsColorIndex = useIntrinsicsPalette
+    ? assignIntrinsicsColorIndices(frustumsData, divideByDataset)
+    : null;
+
+  for (let frustumIdx = 0; frustumIdx < frustumsData.length; frustumIdx++) {
+    const f = frustumsData[frustumIdx];
     const camera = f.camera;
     const image = f.image;
     const position = f.position;
     const quaternion = f.quaternion;
 
     let baseColorHex;
-    if (colorByDataset) {
-      baseColorHex = getCameraColor(f.datasetIndex ?? 0);
-    } else if (frustumColorMode === 'byCamera') {
-      baseColorHex = getCameraColor(f.cameraIndex);
+    if (useIntrinsicsPalette) {
+      baseColorHex = getCameraColor(intrinsicsColorIndex[frustumIdx]);
     } else if (frustumColorMode === 'byRigFrame') {
       const frameIndex = imageFrameIndexMap.get(image.imageId);
       baseColorHex = frameIndex !== undefined ? getCameraColor(frameIndex) : VIZ_FRUSTUM_DEFAULT;
